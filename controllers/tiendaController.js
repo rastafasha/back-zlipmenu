@@ -85,7 +85,7 @@ const crearTienda = async(req, res) => {
         });
 
     } catch (error) {
-        // console.log(error);
+        console.log(error);
         res.status(500).json({
             ok: false,
             msg: 'Hable con el admin'
@@ -166,7 +166,7 @@ const borrarTienda = async(req, res) => {
             });
         }
 
-        await CatTiendaegoria.findByIdAndDelete(id);
+        await Tienda.findByIdAndDelete(id);
 
         res.json({
             ok: true,
@@ -174,6 +174,7 @@ const borrarTienda = async(req, res) => {
         });
 
     } catch (error) {
+        // console.log(error)
         res.status(500).json({
             ok: false,
             msg: 'Error hable con el admin'

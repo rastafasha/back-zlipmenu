@@ -47,7 +47,7 @@
  
  
  
- router.delete('/:id', validarJWT, borrarTienda);
+ router.delete('/delete/:id', validarJWT, borrarTienda);
  
  
  

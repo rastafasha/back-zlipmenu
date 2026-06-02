@@ -242,43 +242,43 @@ const crearUsuarios = async (req, res = response) => {
         await usuario.save();
 
         // Notificar al admin por email
-        try {
-            var transporter = nodemailer.createTransporter(smtpTransport({
-               host: "zlipmenu.com",
-                port: 465,
-                secure: true,
-                auth: {
-                    user: process.env.USER_EMAIL, // soporte@zlipmenu.com
-                    pass: process.env.PASS_email  // Tu contraseña real o de app
-                },
-                tls: {
-                    rejectUnauthorized: false
-                }
-            }));
+        // try {
+        //     var transporter = nodemailer.createTransporter(smtpTransport({
+        //        host: "zlipmenu.com",
+        //         port: 465,
+        //         secure: true,
+        //         auth: {
+        //             user: process.env.USER_EMAIL, // soporte@zlipmenu.com
+        //             pass: process.env.PASS_email  // Tu contraseña real o de app
+        //         },
+        //         tls: {
+        //             rejectUnauthorized: false
+        //         }
+        //     }));
 
-            var mailOptions = {
-                from: `"Soporte ZlipMenu" <${process.env.USER_EMAIL}>`, 
-                to: 'mercadocreativo@gmail.com',
-                subject: 'Nuevo usuario creado en Zlipmenu App',
-                text: `Nuevo usuario registrado:
-                Nombre: ${usuario.first_name} ${usuario.last_name || ''}
-                Email: ${usuario.email}
-                Teléfono: ${usuario.telefono || 'N/A'}
-                Role: ${usuario.role}
-                Local: ${usuario.local || 'N/A'}
-                ID: ${usuario.id}`
-            };
+        //     var mailOptions = {
+        //         from: `"Soporte ZlipMenu" <${process.env.USER_EMAIL}>`, 
+        //         to: 'mercadocreativo@gmail.com',
+        //         subject: 'Nuevo usuario creado en Zlipmenu App',
+        //         text: `Nuevo usuario registrado:
+        //         Nombre: ${usuario.first_name} ${usuario.last_name || ''}
+        //         Email: ${usuario.email}
+        //         Teléfono: ${usuario.telefono || 'N/A'}
+        //         Role: ${usuario.role}
+        //         Local: ${usuario.local || 'N/A'}
+        //         ID: ${usuario.id}`
+        //     };
 
-            transporter.sendMail(mailOptions, function (error, info) {
-                if (error) {
-                    console.log('Error enviando email:', error);
-                } else {
-                    console.log('Email enviado: ' + info.response);
-                }
-            });
-        } catch (emailError) {
-            console.log('Error en notificación email:', emailError);
-        }
+        //     transporter.sendMail(mailOptions, function (error, info) {
+        //         if (error) {
+        //             console.log('Error enviando email:', error);
+        //         } else {
+        //             console.log('Email enviado: ' + info.response);
+        //         }
+        //     });
+        // } catch (emailError) {
+        //     console.log('Error en notificación email:', emailError);
+        // }
 
         //generar el token - JWT
         const token = await generarJWT(usuario.id);

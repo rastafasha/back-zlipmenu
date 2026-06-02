@@ -63,7 +63,7 @@ const fileUpload = async (req, res = response) => {
 
         // 6. Subir a Cloudinary con Transformaciones Automáticas
         const result = await cloudinary.uploader.upload(dataURI, {
-            folder: `mallConnect/uploads/${tipo}/`,
+            folder: `zlipmenu/uploads/${tipo}/`,
             public_id: uuidv4(),
             transformation: [
                 { width: 1000, crop: "limit" }, // Redimensiona si es gigante

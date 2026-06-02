@@ -418,8 +418,6 @@ const getCategoriasByLocal = async (req, res) => {
         // 🟢 2. Buscamos de forma directa SIN usar .populate() para evitar que se cuelgue Express
         const categorias = await Categoria.find({ local: localObjectId });
 
-        console.log('-> API: Consulta exitosa. Categorías encontradas:', categorias.length);
-
         return res.json({
             ok: true,
             categorias

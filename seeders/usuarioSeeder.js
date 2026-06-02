@@ -9,28 +9,18 @@ const EDITOR_ID = '69eaab0919ab9e7948b4bcc1';
 const usuariosData = [
     {
         _id: SUPERADMIN_ID,
-        username: 'Super',
+        first_name: 'Super',
+        last_name: 'Admin',
         email: 'superadmin@superadmin.com',
-        password: 'password',
         role: 'SUPERADMIN',
-        terminos: true,
         google: false,
-        blog: null,
-        pago: null,
+        password: 'password',
+        numdoc: '3232',
+        telefono: '04241874370',
+        pais: 'Venezuela',
+        lang: 'en',
         createdAt: new Date('2024-01-01T08:00:00Z'),
         updatedAt: new Date('2024-01-01T08:00:00Z')
-    },
-    {
-        username: 'Admin',
-        email: 'admin@admin.com',
-        password: 'password',
-        role: 'ADMIN',
-        terminos: true,
-        google: false,
-        blog: null,
-        pago: null,
-        createdAt: new Date('2024-01-02T08:00:00Z'),
-        updatedAt: new Date('2024-01-02T08:00:00Z')
     },
 ];
 

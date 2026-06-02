@@ -1,13 +1,14 @@
 {
-  "name": "backendServer-MongDbAtlas-Mallconnect",
+  "name": "back-zlipmenu-mean",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
     "start:dev": "nodemon index.js",
     "start": "node index.js",
-    "seed:usuario": "node src/seeders/usuarioSeeder.js",
-        "seed:pais": "node src/seeders/paisSeeder.js"
+    "seed:usuario": "node seeders/usuarioSeeder.js",
+        "seed:pais": "node seeders/paisSeeder.js",
+        "seed:tienda": "node seeders/tiendaSeeder.js"
   },
   "keywords": [],
   "author": "",
