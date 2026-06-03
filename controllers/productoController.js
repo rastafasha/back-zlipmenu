@@ -201,39 +201,42 @@ const getProductosTiendaId = async(req, res) => {
         });
 
 };
-
 const getProductosTiendaIdActive = async(req, res) => {
 
     const id = req.params.id;
     const uid = req.uid;
 
-    Producto.find({ local: id }, {  status: ['Activo'] })
-        .populate('local')
-        .populate('categoria')
-        .sort({ createdAt: -1 })
-        .exec((err, productos) => {
-            if (err) {
-                return res.status(500).json({
-                    ok: false,
-                    mensaje: 'Error al buscar producto',
-                    errors: err
-                });
-            }
-            if (!productos) {
-                return res.status(400).json({
-                    ok: false,
-                    mensaje: 'El producto con el id ' + id + ' no existe',
-                    errors: { message: 'No existe un producto con ese id' }
-                });
-
-            }
-            res.status(200).json({
-                ok: true,
-                productos: productos
+    // TODO EL FILTRO VA EN EL PRIMER OBJETO
+    Producto.find({ 
+        local: id, 
+        status: 'Activo' // Si es un solo estado, pásalo como String. Si son varios usa: { $in: ['Activo'] }
+    })
+    .populate('local', 'nombre slug categorias subcategoria')
+    .populate('selector') // Ahora sí se mostrará porque no está bloqueado por la proyección
+    .populate('categoria')
+    .sort({ createdAt: -1 })
+    .exec((err, productos) => {
+        if (err) {
+            return res.status(500).json({
+                ok: false,
+                mensaje: 'Error al buscar productos',
+                errors: err
             });
+        }
+        if (!productos || productos.length === 0) { // Valida también que el arreglo no esté vacío
+            return res.status(404).json({
+                ok: false,
+                mensaje: 'No se encontraron productos activos para esta tienda',
+                errors: { message: 'No existen productos' }
+            });
+        }
+        res.status(200).json({
+            ok: true,
+            productos: productos
         });
-
+    });
 };
+
 
 const crearProducto = async(req, res) => {
     const uid = req.uid;
