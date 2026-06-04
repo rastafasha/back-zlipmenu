@@ -122,14 +122,11 @@ const getPedidoMenusTienda = async(req, res) => {
       
     const tiendaid = req.params.tiendaid;
     const tienda = await Tienda.findById(tiendaid);
-
     const pedidosTienda = pedidos.filter(pedido => pedido.tienda.toString() === tiendaid)
     ;  
 
-
     res.json({
         ok: true,
-        // pedidosTienda,
         pedidos,
     });
 };
@@ -346,18 +343,17 @@ async function finalizado(req, res) {
 
 
 const pedidosbyTiendaId = async(req, res) => {
-
     var id = req.params['id'];
     try {
         const data_pedido = await Pedido.find({ tienda: id })
             .populate('user', 'first_name last_name email telefono numdoc')
+            .populate('tienda', 'nombre slug categorias subcategoria')
             .sort({ createdAt: -1 });
 
         res.status(200).send({ pedidos: data_pedido });
     } catch (err) {
         res.status(500).send({ error: err });
     }
-
 };
 
 const pedidosbyTiendaIdUser = async (req, res) => {

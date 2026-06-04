@@ -221,7 +221,8 @@ const updateStatus = async (req, res) => {
                 cantidad: item.cantidad,
                 precio: item.precio_ahora,
                 color: item.color || '#333',
-                selector: item.nombre_selector || 'unico'
+                selector: item.nombre_selector || 'unico',
+                selector_elegido: item.selector_elegido,
             }));
 
             // 3. Extraemos de forma limpia el ID del método de pago si viene como objeto

@@ -113,6 +113,7 @@ function registro(req, res) {
                     detalleveta.precio = element.precio;
                     detalleveta.color = element.color;
                     detalleveta.selector = element.selector;
+                    detalleveta.selector_elegido = element.selector_elegido;
 
                     await detalleveta.save();
 
@@ -749,7 +750,7 @@ const ventasbyTiendaId = async (req, res) => {
     const uid = req.uid;
 
     Venta.find({ local: id })
-        .populate('local')
+        .populate('local', 'nombre slug categorias subcategoria')
         .sort({ createdAt: -1 })
         .exec((err, ventas) => {
             if (err) {

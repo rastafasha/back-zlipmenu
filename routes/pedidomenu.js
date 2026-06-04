@@ -26,7 +26,7 @@
  router.get('/', getPedidoMenus);
  router.get('/:id', getPedidoMenu);
  router.get('/user/:id', listarPedidoPorUser);
- router.get('/tienda/:tiendaid', getPedidoMenusTienda);
+ router.get('/tienda/:tiendaid', getPedidoMenusTienda);//con driver
  router.get('/status/:status', getPedidosByStatus);
  router.get('/by_tiendaId/:id', pedidosbyTiendaId);
  router.get('/by_tiendaiduser/:tiendaid/:userid',pedidosbyTiendaIdUser);

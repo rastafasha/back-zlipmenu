@@ -175,7 +175,7 @@ const getProductosTiendaId = async(req, res) => {
     const uid = req.uid;
 
     Producto.find({ local: id })
-        .populate('local')
+        .populate('local', 'nombre slug categorias subcategoria')
         .populate('categoria')
         .sort({ createdAt: -1 })
         .exec((err, productos) => {

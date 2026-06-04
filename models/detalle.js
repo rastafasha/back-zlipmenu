@@ -9,6 +9,7 @@ var DetalleSchema = Schema({
     precio: { type: Number, required: true },
     color: { type: String, required: true },
     selector: { type: String, required: true },
+    selector_elegido: { type: String } 
 });
 
 module.exports = mongoose.model('detalle', DetalleSchema);
