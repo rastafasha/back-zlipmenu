@@ -12,20 +12,17 @@ const PagoCheque = require('../models/pagocheque');
 const PagoEfectivo = require('../models/pago.efectivo');
 const Categoria = require('../models/categoria');
 const Promocion = require('../models/promocion');
+const Reservacion = require('../models/reservacion');
 
 const getTodo = async(req, res = response) => {
 
     const busqueda = req.params.busqueda;
     const regex = new RegExp(busqueda, 'i');
 
-    /*const usuarios = await Usuario.find({ nombre: regex });
-    const medicos = await Medico.find({ nombre: regex });
-    const hospitales = await Hospital.find({ nombre: regex });*/
-
     const [usuarios, marcas, blogs, pages, productos, 
         sliders, cursos, tiendas,  
         transferencias, pagoecheques, pagoefectivos, categorias,
-        promocions,
+        promocions, reservaciones,
         ] = await Promise.all([
         Usuario.find({ first_name: regex }),
         Marca.find({ nombre: regex }),
@@ -40,6 +37,7 @@ const getTodo = async(req, res = response) => {
         PagoEfectivo.find({ $or: [{name_person: regex}, {amount: regex}] }),
         Categoria.find({ nombre: regex }),
         Promocion.find({ producto_title: regex }),
+        Reservacion.find({ $or: [ {first_name: regex}, {last_name: regex}]}),
     ]);
 
     res.json({
@@ -57,6 +55,7 @@ const getTodo = async(req, res = response) => {
         pagoefectivos,
         categorias,
         promocions,
+        reservaciones,
 
     });
 }
@@ -121,6 +120,10 @@ const getDocumentosColeccion = async(req, res = response) => {
             
         case 'promocions':
             data = await Promocion.find({ producto_title: regex });
+            break;
+        
+        case 'reservaciones':
+            data = await Reservacion.find({ $or: [ {first_name: regex}, {last_name: regex}]});
             break;
 
 

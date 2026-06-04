@@ -126,6 +126,8 @@ const startServer = async () => {
     app.use('/api/videocursos', require('./routes/videocurso'));
     app.use('/api/favoritos', require('./routes/favorito'));
 
+    app.use('/api/reservacion', require('./routes/reservacion'));
+
     //pagos
     app.use('/api/tipopago', require('./routes/tipopago'));
     app.use('/api/transferencias', require('./routes/transferencia'));

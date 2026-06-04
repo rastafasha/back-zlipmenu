@@ -2,8 +2,8 @@ const { response } = require('express');
 const Transferencia = require('../models/transferencia');
 const nodemailer = require('nodemailer');
 const Congeneral = require('../models/congeneral');
-const PushSubscription = require('../models/push-subscription');
 const ventaController = require('./ventaController');
+const PushSubscription = require('../models/push-subscription');
 const { sendNotification } = require('../helpers/notificaciones');
 
 
