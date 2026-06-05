@@ -48,7 +48,7 @@ const crearComentario = (req, res) => {
     let data = req.body;
     console.log(data);
 
-    Comentario.find({ user: data.user, producto: data.producto }, (err, comentario_data) => {
+    Comentario.find({ user: data.user, producto: data.producto, local: data.local }, (err, comentario_data) => {
         if (err) {
             console.log(err);
             res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
@@ -66,6 +66,7 @@ const crearComentario = (req, res) => {
                 comentario.cons = data.cons;
                 comentario.estrellas = data.estrellas;
                 comentario.producto = data.producto;
+                comentario.local = data.local;
                 comentario.user = data.user;
                 comentario.save((err, comentario_save) => {
                     if (!err) {
@@ -339,6 +340,37 @@ function listarDislikes(req, res) {
     });
 }
 
+const getComentarioProducto = async(req, res) => {
+
+    const id = req.params.id;
+    const uid = req.uid;
+
+    Comentario.find({ producto: id })
+        .populate('user')
+        .exec((err, comentarios) => {
+            if (err) {
+                return res.status(500).json({
+                    ok: false,
+                    mensaje: 'Error al buscar producto',
+                    errors: err
+                });
+            }
+            if (!comentarios) {
+                return res.status(400).json({
+                    ok: false,
+                    mensaje: 'El producto con el id ' + id + ' no existe',
+                    errors: { message: 'No existe un producto con ese id' }
+                });
+
+            }
+            res.status(200).json({
+                ok: true,
+                comentarios: comentarios
+            });
+        });
+
+};
+
 
 module.exports = {
     getComentarios,
@@ -351,5 +383,6 @@ module.exports = {
     addDislike,
     addLike,
     getData,
-    listarDislikes
+    listarDislikes,
+    getComentarioProducto
 };

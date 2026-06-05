@@ -1,7 +1,8 @@
 const { response } = require('express');
 const Reservacion = require('../models/reservacion');
 const Tienda = require('../models/tienda');
-const Usuario = require('../controllers/usuarios');
+const UsuarioController = require('../controllers/usuarios');
+const Usuario = require('../models/usuario');
 const mongoose = require('mongoose');
 const PushSubscription = require('../models/push-subscription');
 const { sendNotification } = require('../helpers/notificaciones');
@@ -116,7 +117,7 @@ const crearReservacion = async (req, res) => {
 
             try {
                 // Invocamos la función del controlador de usuarios de forma asíncrona
-                await Usuario.crearClienteExpress(mockReqUsuario, mockResUsuario);
+                await UsuarioController.crearClienteExpress(mockReqUsuario, mockResUsuario);
 
                 // Si la creación fue exitosa, extraemos el ID generado del usuario
                 if (mockResUsuario.responseData && mockResUsuario.responseData.ok) {

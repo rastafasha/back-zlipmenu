@@ -3,6 +3,8 @@ const Venta = require('../models/venta');
 const Tienda = require('../models/tienda');
 var Detalle = require('../models/detalle');
 var Cancelacion = require('../models/cancelacion');
+const PushSubscription = require('../models/push-subscription');
+const { sendNotification } = require('../helpers/notificaciones');
 
 const { io } = require('../index');
 const ProductoController = require('./productoController');
@@ -205,7 +207,10 @@ const borrarVenta = async (req, res) => {
 
 function data_detalle(req, res) {
     var id = req.params['id'];
-    Venta.findById({ _id: id }).populate('user').exec((err, data_venta) => {
+    Venta.findById({ _id: id })
+    .populate('user')
+    .populate('metodo_pago')
+    .exec((err, data_venta) => {
         if (err) {
             res.status(500).send({ message: err });
         } else {
@@ -556,14 +561,54 @@ function get_solicitud(req, res) {
 function set_track(req, res) {
     var id = req.params['id'];
     var data = req.body;
-    Venta.findByIdAndUpdate({ _id: id }, { tracking_number: data.tracking_number, estado: 'Enviado' }, (err, venta_data) => {
-        if (venta_data) {
-            res.status(200).send({ venta: venta_data });
-        } else {
-            res.status(500).send({ error: err });
+
+    Venta.findByIdAndUpdate(
+        { _id: id }, 
+        { tracking_number: data.tracking_number, estado: 'Enviado' }, 
+        { new: true }, 
+        (err, venta_data) => {
+            if (venta_data) {
+                // 1. Responder de inmediato al administrador
+                res.status(200).send({ venta: venta_data });
+
+                // 2. Buscar al usuario dueño de la venta para obtener su PushSubscription
+                const usuarioId = venta_data.user || venta_data.usuario; 
+                
+                if (usuarioId) {
+                    // Buscamos el usuario en la BD (asumiendo que tienes un modelo Usuario)
+                    Usuario.findById(usuarioId, (errUsuario, usuario_data) => {
+                        // Verificamos si el usuario existe y si tiene una suscripción guardada
+                        if (usuario_data && usuario_data.pushSubscription) {
+                            
+                            try {
+                                // 3. Estructuramos la data para tu helper de notificaciones
+                                const payload = {
+                                    tipo: PEDIDO_ENVIADO,
+                                    titulo: "¡Pedido en camino! 🚀",
+                                    cuerpo: `Tu tracking number es: ${venta_data.tracking_number}`,
+                                    ventaId: id
+                                };
+
+                                // 4. Le pasamos al helper tanto la SUSCRIPCIÓN como el CONTENIDO
+                                sendNotification(usuario_data.pushSubscription, payload);
+
+                            } catch (errorPush) {
+                                console.error("Error al ejecutar el helper de push:", errorPush);
+                            }
+
+                        } else {
+                            console.log("El usuario no tiene una PushSubscription activa.");
+                        }
+                    });
+                }
+
+            } else {
+                res.status(500).send({ error: err });
+            }
         }
-    })
+    );
 }
+
 
 function update_enviado(req, res) {
     var id = req.params['id'];

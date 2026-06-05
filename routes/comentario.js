@@ -15,7 +15,8 @@ const {
     addDislike,
     addLike,
     getData,
-    listarDislikes
+    listarDislikes,
+    getComentarioProducto
 } = require('../controllers/comentarioController');
 const { validarJWT } = require('../middlewares/validar-jwt');
 const { check } = require('express-validator');
@@ -23,6 +24,16 @@ const { validarCampos } = require('../middlewares/validar-campos');
 
 router.get('/', getComentarios);
 
+router.get('/:id', validarJWT, getComentario);
+router.get('/producto/:id',  getComentarioProducto);
+router.get('/comentarios_client/obtener/:id/:orden', getData);
+router.get('/comentarios_likes/get/:id', listarLikes);
+router.get('/comentarios_dislikes/get/:id', listarDislikes);
+
+
+router.post('/comentarios_likes/add', addLike);
+
+router.post('/comentarios_dislikes/add', addDislike);
 router.post('/', [
     validarJWT,
     check('comentario', 'El comentario del categoria es necesario').not().isEmpty(),
@@ -37,15 +48,8 @@ router.put('/:id', [
 
 router.delete('/:id', validarJWT, borrarComentario);
 
-router.get('/:id', validarJWT, getComentario);
 
-router.get('/comentarios_client/obtener/:id/:orden', getData);
 
-router.post('/comentarios_likes/add', addLike);
-router.get('/comentarios_likes/get/:id', listarLikes);
-
-router.post('/comentarios_dislikes/add', addDislike);
-router.get('/comentarios_dislikes/get/:id', listarDislikes);
 
 
 module.exports = router;

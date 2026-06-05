@@ -177,6 +177,7 @@ const getProductosTiendaId = async(req, res) => {
     Producto.find({ local: id })
         .populate('local', 'nombre slug categorias subcategoria')
         .populate('categoria')
+        .populate('comentarios')
         .sort({ createdAt: -1 })
         .exec((err, productos) => {
             if (err) {

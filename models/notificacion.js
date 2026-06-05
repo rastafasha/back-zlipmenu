@@ -15,6 +15,7 @@ const notificacionSchema = Schema({
             'PEDIDO_APROBADO', 
             'PEDIDO_RECHAZADO',
             'PEDIDO_FINALIZADO',
+            'PEDIDO_ENVIADO',
             'RESERVACION_CONFIRMADA', 
             'RESERVACION_CANCELADA',
             'RESERVACION_COMPLETADA',

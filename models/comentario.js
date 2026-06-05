@@ -8,6 +8,7 @@ var ComentarioSchema = Schema({
     estrellas: { type: Number, required: true },
     user: { type: Schema.ObjectId, ref: 'user' },
     producto: { type: Schema.ObjectId, ref: 'producto' },
+    local: { type: Schema.ObjectId, ref: 'tienda' },
     createdAt: { type: Date, default: Date.now, required: true },
 });
 

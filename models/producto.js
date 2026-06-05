@@ -21,7 +21,7 @@ var ProductoSchema = Schema({
     local: { type: Schema.ObjectId, ref: 'tienda' },
     subcategoria: { type: String, required: false },
     nombre_selector: { type: String, required: false },
-    stars: { type: Number },
+    comentarios: { type: Schema.ObjectId, ref: 'comentario'  },
     ventas: { type: Number },
     isFeatured: { type: Boolean, required: false },
     status: { type: String, required: false, default: 'Desactivado' },
