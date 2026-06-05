@@ -12,6 +12,7 @@
     getReservacion,
     find_Reservacionesby_userid,
     getReservacionesByLocal,
+    obtenerEstadisticasReservas
  } = require('../controllers/reservacionController');
  
  const { validarJWT } = require('../middlewares/validar-jwt');
@@ -19,6 +20,7 @@
  const { validarCampos } = require('../middlewares/validar-campos');
  
  router.get('/', getReservaciones);
+ router.get('/estadisticas', validarJWT, obtenerEstadisticasReservas);
  router.get('/:id', getReservacion);
  router.get('/by_user/:userid', find_Reservacionesby_userid);
  router.get('/local/:localId', getReservacionesByLocal);

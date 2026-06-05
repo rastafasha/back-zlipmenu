@@ -60,18 +60,71 @@ const getTransferencia = async (req, res) => {
 
 const crearTransferencia = async (req, res) => {
 
-    const uid = req.uid;
+    const uid = req.uid; // ID del cliente que crea la transferencia
     const transferencia = new Transferencia({
         user: uid,
         ...req.body
     });
 
     try {
-
         const transferenciaDB = await transferencia.save();
         const id = transferenciaDB._id;
-        //nnotificamos a la tienda
-        // sendEmailAdmin(uid,id);
+
+        // =========================================================================
+        // 🚀 NUEVA LÓGICA: NOTIFICAR A DUEÑOS (ADMIN) Y SUPERADMINS
+        // =========================================================================
+        try {
+            // 1. Buscamos las suscripciones Push y cargamos la información de sus usuarios
+            const todasLasSubs = await PushSubscription.find().populate('usuario');
+
+            // 2. Filtramos solo las que pertenecen a SUPERADMIN o ADMIN (dueños de tiendas)
+            const adminsSubs = todasLasSubs.filter(sub => {
+                return sub.usuario && (sub.usuario.role === 'SUPERADMIN' || sub.usuario.role === 'ADMIN');
+            });
+
+            if (adminsSubs.length > 0) {
+                const tituloAdmin = '¡Nuevo Pago Registrado! 💰';
+                const mensajeAdmin = `El cliente reportó una transferencia por ${transferenciaDB.amount || ''}$.`;
+                const urlRedireccionAdmin = `/panel-admin/pagos`;
+
+                // Agrupamos los IDs de los administradores únicos para no duplicar filas en la BD
+                const adminIdsUnicos = [...new Set(adminsSubs.map(s => s.usuario._id.toString()))];
+
+                // 3. GUARDAMOS EN TU SCHEMA DE NOTIFICACIONES (Para la campana en sus paneles)
+                const promesasNotificaciones = adminIdsUnicos.map(adminId => {
+                    const nuevaNoti = new Notificacion({
+                        usuario: adminId,
+                        titulo: tituloAdmin,
+                        mensaje: mensajeAdmin,
+                        tipo: 'NUEVO_PAGO', // Satisface tu ENUM permitido
+                        referenciaId: id
+                    });
+                    return nuevaNoti.save();
+                });
+                await Promise.all(promesasNotificaciones);
+
+                // 4. DISPARAMOS EL WEB PUSH AL NAVEGADOR O CELULAR DE CADA UNO
+                adminsSubs.forEach(s => {
+                    sendNotification(
+                        s.subscription,
+                        tituloAdmin,
+                        mensajeAdmin,
+                        urlRedireccionAdmin,
+                        s.usuario._id,
+                        'NUEVO_PAGO',
+                        id
+                    ).catch(err => {
+                        // Limpieza automática si el navegador bloqueó o desinstaló el push
+                        if (err.statusCode === 410 || err.statusCode === 404) {
+                            s.deleteOne().catch(e => console.log('Error eliminando sub obsoleta', e));
+                        }
+                    });
+                });
+            }
+        } catch (errorNotiAdmin) {
+            console.error('Error enviando notificaciones al equipo administrativo:', errorNotiAdmin);
+        }
+        // =========================================================================
 
         res.json({
             ok: true,
@@ -85,8 +138,6 @@ const crearTransferencia = async (req, res) => {
             msg: 'Hable con el admin'
         });
     }
-
-
 };
 
 const actualizarTransferencia = async (req, res) => {

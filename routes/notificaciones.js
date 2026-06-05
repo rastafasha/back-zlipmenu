@@ -8,7 +8,9 @@ const {
     obtenerHistorial,
     obtenerContador,
     marcarTodasLeidas,
-    marcarUnaLeida
+    marcarUnaLeida,
+    borrarNotificacionPorId,
+borrarTodasLasNotificaciones
 } = require('../controllers/notificacionesController');
 
 const router = Router();
@@ -20,5 +22,8 @@ router.get('/historial', obtenerHistorial);
 router.get('/unread-count', obtenerContador);
 router.put('/marcar-leidas', marcarTodasLeidas);
 router.put('/:id', marcarUnaLeida); // <--- Esta es la del Offcanvas
+
+router.delete('/por_id/:id', validarJWT, borrarNotificacionPorId);
+router.delete('/limpiar/todas', validarJWT, borrarTodasLasNotificaciones);
 
 module.exports = router;

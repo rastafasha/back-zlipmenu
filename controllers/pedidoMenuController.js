@@ -6,21 +6,20 @@ const Pedido = require('../models/pedidomenu');
 const PushSubscription = require('../models/push-subscription');
 const { sendNotification } = require('../helpers/notificaciones');
 
-const crearPedidoMenu = async(req, res) => {
+const crearPedidoMenu = async (req, res) => {
     const { user, pedidoList, tienda } = req.body;
 
     const body = req.body;
     try {
 
         const existeUsuario = await Usuario.findById(body.user);
-       
         const existeTienda = await Tienda.findById(body.tienda);
 
         if (!existeUsuario) {
             return res.status(400).json({
                 ok: false,
-                 msg: 'El usuario no existe'
-            })
+                msg: 'El usuario no existe'
+            });
         }
         if (!existeTienda) {
             return res.status(400).json({
@@ -29,7 +28,6 @@ const crearPedidoMenu = async(req, res) => {
             });
         }
 
-        
         const pedido = new Pedido({
             user: body.user,
             pedidoList: body.pedidoList,
@@ -39,12 +37,78 @@ const crearPedidoMenu = async(req, res) => {
             status: body.status,
         });
 
-        //guardar pedido
-        await pedido.save();
+        // Guardar pedido
+        const pedidoDB = await pedido.save();
+
+        // =========================================================================
+        // 🔒 SEGURIDAD COMPLETA: FILTRADO EXACTO POR LOCAL DEL USUARIO
+        // =========================================================================
+        try {
+            // Buscamos los usuarios con permiso:
+            // - SUPERADMIN (Tienen acceso global)
+            // - ADMIN cuyo campo 'local' coincida con la 'tienda' del pedido entrante
+            const usuariosAutorizados = await Usuario.find({
+                $or: [
+                    { role: 'SUPERADMIN' },
+                    { role: 'ADMIN', local: body.tienda }
+                ]
+            });
+
+            const idsAutorizados = usuariosAutorizados.map(u => u._id.toString());
+
+            if (idsAutorizados.length > 0) {
+                // Buscamos las suscripciones Push asociadas únicamente a esos IDs
+                const subsFiltradas = await PushSubscription.find({
+                    usuario: { $in: idsAutorizados }
+                });
+
+                if (subsFiltradas.length > 0) {
+                    const tituloAdmin = '¡Nuevo Pedido Entrante! 🍕';
+                    const nombreCliente = existeUsuario.nombre || 'Un cliente';
+                    const mensajeAdmin = `${nombreCliente} ha realizado un pedido en tu tienda.`;
+                    const urlRedireccionAdmin = `/dashboard/tienda/pedidos`;
+
+                    // 1. REGISTRAMOS EN TU MODELO DE NOTIFICACIONES (La campana del panel)
+                    const promesasNotificaciones = idsAutorizados.map(adminId => {
+                        const nuevaNoti = new Notificacion({
+                            usuario: adminId,
+                            titulo: tituloAdmin,
+                            mensaje: mensajeAdmin,
+                            tipo: 'NUEVO_PEDIDO', // 🟢 VALOR ENUM EXACTO DE TU MODELO
+                            referenciaId: pedidoDB._id
+                        });
+                        return nuevaNoti.save();
+                    });
+                    await Promise.all(promesasNotificaciones);
+
+                    // 2. DISPARAMOS EL WEB PUSH AL NAVEGADOR O CELULAR DE FORMA SEGURA
+                    subsFiltradas.forEach(s => {
+                        sendNotification(
+                            s.subscription,
+                            tituloAdmin,
+                            mensajeAdmin,
+                            urlRedireccionAdmin,
+                            s.usuario,
+                            'NUEVO_PEDIDO', // 🟢 CORREGIDO: Usamos el string exacto que sí acepta tu sistema
+                            pedidoDB._id
+                        ).catch(err => {
+                            if (err.statusCode === 410 || err.statusCode === 404) {
+                                s.deleteOne().catch(e => console.log('Error eliminando sub obsoleta', e));
+                            }
+                        });
+                    });
+                }
+            }
+        } catch (errorNotiPedido) {
+            console.error('Error de seguridad en notificaciones de pedido:', errorNotiPedido);
+        }
+        // =========================================================================
+
+        // =========================================================================
 
         res.json({
             ok: true,
-            pedido
+            pedido: pedidoDB
         });
 
     } catch (error) {
@@ -54,12 +118,12 @@ const crearPedidoMenu = async(req, res) => {
             msg: 'Error inesperado... revisar logs'
         });
     }
-
-
 };
-        
 
-const actualizarPedidoMenu = async(req, res) => {
+
+
+
+const actualizarPedidoMenu = async (req, res) => {
 
     const id = req.params.id;
     const uid = req.uid;
@@ -104,7 +168,7 @@ const actualizarPedidoMenu = async(req, res) => {
 
 };
 
-const getPedidoMenus = async(req, res) => {
+const getPedidoMenus = async (req, res) => {
 
     const pedidos = await Pedido.find()
         .populate('user', 'nombre email')
@@ -114,16 +178,16 @@ const getPedidoMenus = async(req, res) => {
         pedidos
     });
 };
-const getPedidoMenusTienda = async(req, res) => {
+const getPedidoMenusTienda = async (req, res) => {
 
     const pedidos = await Pedido.find().populate('tienda')
-    .populate('driver');
+        .populate('driver');
 
-      
+
     const tiendaid = req.params.tiendaid;
     const tienda = await Tienda.findById(tiendaid);
     const pedidosTienda = pedidos.filter(pedido => pedido.tienda.toString() === tiendaid)
-    ;  
+        ;
 
     res.json({
         ok: true,
@@ -131,7 +195,7 @@ const getPedidoMenusTienda = async(req, res) => {
     });
 };
 
-const getPedidoMenu = async(req, res) => {
+const getPedidoMenu = async (req, res) => {
 
     const id = req.params.id;
 
@@ -163,7 +227,7 @@ const getPedidoMenu = async(req, res) => {
 };
 
 
-const borrarPedidoMenu = async(req, res) => {
+const borrarPedidoMenu = async (req, res) => {
 
     const id = req.params.id;
 
@@ -206,16 +270,16 @@ const listarPedidoPorUser = (req, res) => {
             res.status(500).send({ error: err });
         }
     })
-    .sort({createdAt: - 1});
+        .sort({ createdAt: - 1 });
 }
 
-const getPedidosByStatus = async(req, res) => {
+const getPedidosByStatus = async (req, res) => {
 
     var status = req.params['status'];
     Pedido.find({ status: status })
         .populate('tienda', 'nombre')
         .populate('user', 'telefono numdoc first_name last_name')
-        .sort({createdAt: - 1})
+        .sort({ createdAt: - 1 })
         .exec((err, data_pedido) => {
             if (!err) {
                 if (data_pedido) {
@@ -235,8 +299,8 @@ async function activar(req, res) {
     try {
         // 1. Actualizamos el pedido. { new: true } nos devuelve el pedido YA modificado.
         const pedido_data = await Pedido.findByIdAndUpdate(
-            { _id: id }, 
-            { status: 'INPROCESS' }, 
+            { _id: id },
+            { status: 'INPROCESS' },
             { new: true }
         );
 
@@ -246,12 +310,12 @@ async function activar(req, res) {
 
         // 🚀 DISPARO CENTRALIZADO DE NOTIFICACIÓN HÍBRIDA
         // Definimos textos atractivos para el cliente de Zlipmenu
-        const tipoNotificacion = 'PEDIDO_APROBADO'; 
+        const tipoNotificacion = 'PEDIDO_APROBADO';
         const titulo = '¡Tu pedido está en proceso! 🍳';
         const mensaje = `El comercio ha aceptado tu orden y ya la está preparando.`;
-        
+
         // El cliente que realizó la compra
-        const clienteId = pedido_data.user || pedido_data.cliente; 
+        const clienteId = pedido_data.user || pedido_data.cliente;
         const urlRedireccion = `/my-account/pedidos/${pedido_data._id}`;
 
         // Buscamos si el cliente tiene dispositivos con Web Push activos
@@ -291,8 +355,8 @@ async function finalizado(req, res) {
     try {
         // 1. Actualizamos el pedido a FINISHED
         const pedido_data = await Pedido.findByIdAndUpdate(
-            { _id: id }, 
-            { status: 'FINISHED' }, 
+            { _id: id },
+            { status: 'FINISHED' },
             { new: true }
         );
 
@@ -302,12 +366,12 @@ async function finalizado(req, res) {
 
         // 🚀 DISPARO CENTRALIZADO DE NOTIFICACIÓN HÍBRIDA
         // Ahora sí usamos el tipo oficial gracias a tu nuevo ENUM
-        const tipoNotificacion = 'PEDIDO_FINALIZADO'; 
+        const tipoNotificacion = 'PEDIDO_FINALIZADO';
         const titulo = '¡Tu pedido ha finalizado! 🍳';
         const mensaje = `Gracias por comprar y usar nuestra App. ¡Vuelve pronto!`;
-        
+
         // Extracción segura del _id del objeto 'user'
-        const clienteId = pedido_data.user?._id || pedido_data.user || pedido_data.cliente; 
+        const clienteId = pedido_data.user?._id || pedido_data.user || pedido_data.cliente;
         const urlRedireccion = `/my-account/pedidos/${pedido_data._id}`;
 
         // Búsqueda de suscripciones usando el campo correcto 'usuario'
@@ -342,7 +406,7 @@ async function finalizado(req, res) {
 
 
 
-const pedidosbyTiendaId = async(req, res) => {
+const pedidosbyTiendaId = async (req, res) => {
     var id = req.params['id'];
     try {
         const data_pedido = await Pedido.find({ tienda: id })
@@ -361,18 +425,18 @@ const pedidosbyTiendaIdUser = async (req, res) => {
 
     // 1. Validar que ambos IDs tengan el formato correcto de MongoDB
     if (!mongoose.Types.ObjectId.isValid(tiendaid) || !mongoose.Types.ObjectId.isValid(userid)) {
-        return res.status(400).send({ 
-            message: 'Uno de los IDs proporcionados no es válido.' 
+        return res.status(400).send({
+            message: 'Uno de los IDs proporcionados no es válido.'
         });
     }
 
     try {
-        const data_pedido = await Pedido.find({ 
-            tienda: new mongoose.Types.ObjectId(tiendaid), 
+        const data_pedido = await Pedido.find({
+            tienda: new mongoose.Types.ObjectId(tiendaid),
             user: new mongoose.Types.ObjectId(userid)
         })
-        .populate('user')
-        .sort({ createdAt: -1 });
+            .populate('user')
+            .sort({ createdAt: -1 });
 
         res.status(200).send({ pedidos: data_pedido });
     } catch (err) {

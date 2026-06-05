@@ -29,6 +29,7 @@ var ReservaSchema = Schema({
         default: 'Pendiente' 
     },
     observaciones: { type: String, required: false }, // en caso de que sea rechazado
+    notificado_whatsapp: { type: Boolean, required: false }, // notificar por whatsapp
     
     // Relación con tu modelo Tienda (usando la referencia 'tienda' de tu archivo anterior)
     usuario: { type: Schema.ObjectId, ref: 'usuario', required: true }, 

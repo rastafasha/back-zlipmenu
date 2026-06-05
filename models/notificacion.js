@@ -18,6 +18,7 @@ const notificacionSchema = Schema({
             'RESERVACION_CONFIRMADA', 
             'RESERVACION_CANCELADA',
             'RESERVACION_COMPLETADA',
+            'NUEVA_RESERVACION',
             'NUEVO_MENSAJE', 
             'AVISO_GENERAL',
         ],
