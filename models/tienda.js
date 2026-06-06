@@ -37,6 +37,15 @@ var TiendaSchema = Schema({
     plan: { type: String, required: false, default: 'Gratis' }, // 'Gratis', 'Premium', 'VIP'
     fechaVencimiento: { type: Date, required: false }, // Día exacto en que expira el acceso
     idSuscripcionPago: { type: String, required: false }, // Para guardar el ID de Stripe/PayPal en el futuro
+    
+    //registro para enviar notificaciones 
+    whatsappStatus: { 
+        type: String, 
+        enum: ['CONECTADO', 'DESCONECTADO', 'ESPERANDO_QR'], 
+        default: 'DESCONECTADO' 
+    },
+    whatsappQR: { type: String, default: '' }, // Aquí se guarda el string del código QR
+    whatsappConnectedAt: { type: Date },
 
     createdAt: { type: Date, default: Date.now, required: true },
     updatedAt: { type: Date }
