@@ -145,7 +145,7 @@ const startServer = async () => {
 
     //notificacioens
     app.use('/api/notificaciones', require('./routes/notificaciones'));
-    app.use('/api/notipush', require('./routes/notificaciones'));
+    app.use('/api/notipush', require('./routes/notipush'));
 
     //notification
     const vapidKeys = {
