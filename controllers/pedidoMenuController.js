@@ -44,64 +44,63 @@ const crearPedidoMenu = async (req, res) => {
         // 🔒 SEGURIDAD COMPLETA: FILTRADO EXACTO POR LOCAL DEL USUARIO
         // =========================================================================
         try {
-            // Buscamos los usuarios con permiso:
-            // - SUPERADMIN (Tienen acceso global)
-            // - ADMIN cuyo campo 'local' coincida con la 'tienda' del pedido entrante
-            const usuariosAutorizados = await Usuario.find({
-                $or: [
-                    { role: 'SUPERADMIN' },
-                    { role: 'ADMIN', local: body.tienda }
-                ]
-            });
+    // Buscamos los usuarios administradores autorizados
+    const usuariosAutorizados = await Usuario.find({
+        $or: [
+            { role: 'SUPERADMIN' },
+            { role: 'ADMIN', local: body.tienda }
+        ]
+    });
 
-            const idsAutorizados = usuariosAutorizados.map(u => u._id.toString());
+    const idsAutorizados = usuariosAutorizados.map(u => u._id.toString());
 
-            if (idsAutorizados.length > 0) {
-                // Buscamos las suscripciones Push asociadas únicamente a esos IDs
-                const subsFiltradas = await PushSubscription.find({
-                    usuario: { $in: idsAutorizados }
+    if (idsAutorizados.length > 0) {
+        // CORRECCIÓN 1: Cambiamos 'usuario' por 'user' para coincidir con tu modelo
+        const subsFiltradas = await PushSubscription.find({
+            user: { $in: idsAutorizados } 
+        });
+
+        if (subsFiltradas.length > 0) {
+            const tituloAdmin = '¡Nuevo Pedido Entrante! 🍕';
+            const nombreCliente = existeUsuario.first_name || existeUsuario.nombre || 'Un cliente';
+            const mensajeAdmin = `${nombreCliente} ha realizado un pedido en tu tienda.`;
+            const urlRedireccionAdmin = `/dashboard/tienda/pedidos`;
+
+            // 1. REGISTRAMOS EN TU MODELO DE NOTIFICACIONES (Campana interna)
+            const promesasNotificaciones = idsAutorizados.map(adminId => {
+                const nuevaNoti = new Notificacion({
+                    usuario: adminId, // Ajusta si tu modelo Notificacion usa 'user' o 'usuario'
+                    titulo: tituloAdmin,
+                    mensaje: mensajeAdmin,
+                    tipo: 'NUEVO_PEDIDO', 
+                    referenciaId: pedidoDB._id
                 });
+                return nuevaNoti.save();
+            });
+            await Promise.all(promesasNotificaciones);
 
-                if (subsFiltradas.length > 0) {
-                    const tituloAdmin = '¡Nuevo Pedido Entrante! 🍕';
-                    const nombreCliente = existeUsuario.nombre || 'Un cliente';
-                    const mensajeAdmin = `${nombreCliente} ha realizado un pedido en tu tienda.`;
-                    const urlRedireccionAdmin = `/dashboard/tienda/pedidos`;
-
-                    // 1. REGISTRAMOS EN TU MODELO DE NOTIFICACIONES (La campana del panel)
-                    const promesasNotificaciones = idsAutorizados.map(adminId => {
-                        const nuevaNoti = new Notificacion({
-                            usuario: adminId,
-                            titulo: tituloAdmin,
-                            mensaje: mensajeAdmin,
-                            tipo: 'NUEVO_PEDIDO', // 🟢 VALOR ENUM EXACTO DE TU MODELO
-                            referenciaId: pedidoDB._id
-                        });
-                        return nuevaNoti.save();
-                    });
-                    await Promise.all(promesasNotificaciones);
-
-                    // 2. DISPARAMOS EL WEB PUSH AL NAVEGADOR O CELULAR DE FORMA SEGURA
-                    subsFiltradas.forEach(s => {
-                        sendNotification(
-                            s.subscription,
-                            tituloAdmin,
-                            mensajeAdmin,
-                            urlRedireccionAdmin,
-                            s.usuario,
-                            'NUEVO_PEDIDO', // 🟢 CORREGIDO: Usamos el string exacto que sí acepta tu sistema
-                            pedidoDB._id
-                        ).catch(err => {
-                            if (err.statusCode === 410 || err.statusCode === 404) {
-                                s.deleteOne().catch(e => console.log('Error eliminando sub obsoleta', e));
-                            }
-                        });
-                    });
-                }
-            }
-        } catch (errorNotiPedido) {
-            console.error('Error de seguridad en notificaciones de pedido:', errorNotiPedido);
+            // 2. DISPARAMOS EL WEB PUSH AL NAVEGADOR
+            subsFiltradas.forEach(s => {
+                // CORRECCIÓN 2: Pasamos 's' completo si guardaste endpoint/keys en la raíz del documento
+                sendNotification(
+                    s, 
+                    tituloAdmin,
+                    mensajeAdmin,
+                    urlRedireccionAdmin,
+                    s.user, // CORRECCIÓN 3: s.user en lugar de s.usuario
+                    'NUEVO_PEDIDO', 
+                    pedidoDB._id
+                ).catch(err => {
+                    if (err.statusCode === 410 || err.statusCode === 404) {
+                        s.deleteOne().catch(e => console.log('Error eliminando sub obsoleta', e));
+                    }
+                });
+            });
         }
+    }
+} catch (errorNotiPedido) {
+    console.error('Error de seguridad en notificaciones de pedido:', errorNotiPedido);
+}
         // =========================================================================
 
         // =========================================================================
