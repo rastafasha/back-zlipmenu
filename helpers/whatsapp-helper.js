@@ -16,8 +16,17 @@ const crearClienteWhatsApp = (restauranteId) => {
             dataPath: './whatsapp-sessions'
         }),
         puppeteer: {
-            args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        }
+        // En Render NO ponemos executablePath, dejamos que busque el Chrome del sistema operativo [1]
+        args: [
+            '--no-sandbox', 
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage', // 🔥 Crucial para servidores con poca RAM (Render) [1]
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process' // Reduce el uso de memoria en Render
+        ],
+    }
     });
 
     client.on('qr', async (qr) => {
