@@ -3,6 +3,7 @@ const Transferencia = require('../models/transferencia');
 const nodemailer = require('nodemailer');
 const Congeneral = require('../models/congeneral');
 const ventaController = require('./ventaController');
+const Notificacion = require('../models/notificacion');
 const PushSubscription = require('../models/push-subscription');
 const { sendNotification } = require('../helpers/notificaciones');
 

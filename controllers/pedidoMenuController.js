@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const Tienda = require('../models/tienda');
 const Usuario = require('../models/usuario');
 const Pedido = require('../models/pedidomenu');
+const Notificacion = require('../models/notificacion');
 const PushSubscription = require('../models/push-subscription');
 const { sendNotification } = require('../helpers/notificaciones');
 
@@ -55,55 +56,50 @@ const crearPedidoMenu = async (req, res) => {
             const idsAutorizados = usuariosAutorizados.map(u => u._id.toString());
 
             if (idsAutorizados.length > 0) {
-                // CORRECCIÓN 1: Cambiamos 'usuario' por 'user' para coincidir con tu modelo
+                // Buscamos las suscripciones asociadas a los administradores
                 const subsFiltradas = await PushSubscription.find({
-                    user: { $in: idsAutorizados }
+                    usuario: { $in: idsAutorizados } // Ajusta a 'user' si tu modelo usa 'user'
                 });
 
-                if (idsAutorizados.length > 0) {
+                if (subsFiltradas.length > 0) {
+                    const tituloAdmin = '¡Nuevo Pedido Entrante! 🍕';
+                    const nombreCliente = existeUsuario.first_name || existeUsuario.nombre || 'Un cliente';
+                    const mensajeAdmin = `${nombreCliente} ha realizado un pedido en tu tienda.`;
+                    const urlRedireccionAdmin = `/dashboard/tienda/pedidos`;
 
-                    // CORRECCIÓN: Si tu modelo de Mongo usa 'usuario' en vez de 'user', cámbialo aquí:
-                    const subsFiltradas = await PushSubscription.find({
-                        usuario: { $in: idsAutorizados } // 👈 Cambia 'user' por 'usuario'
-                    });
+                    // 🚀 CORRECCIÓN: Eliminamos el bloque 'new Notificacion' que rompía el código
+                    // y pasamos directamente al envío del Web Push nativo
 
-                    if (subsFiltradas.length > 0) {
-                        const tituloAdmin = '¡Nuevo Pedido Entrante! 🍕';
-                        const nombreCliente = existeUsuario.first_name || existeUsuario.nombre || 'Un cliente';
-                        const mensajeAdmin = `${nombreCliente} ha realizado un pedido en tu tienda.`;
-                        const urlRedireccionAdmin = `/dashboard/tienda/pedidos`;
+                    // DISPARAMOS EL WEB PUSH AL NAVEGADOR DE FORMA SEGURA
+                    subsFiltradas.forEach(async (s) => {
+                        try {
+                            await sendNotification(
+                                s,
+                                tituloAdmin,
+                                mensajeAdmin,
+                                urlRedireccionAdmin,
+                                s.usuario, // Ajusta a 's.user' si corresponde
+                                'NUEVO_PEDIDO',
+                                pedidoDB._id
+                            );
+                            console.log(`✅ Push enviado con éxito al dispositivo: ${s.usuario || s.user}`);
 
-                        // 1. REGISTRAMOS EN TU MODELO DE NOTIFICACIONES (Campana)
-                        // ... (Tu bloque de promesasNotificaciones se mantiene igual)
+                        } catch (err) {
+                            console.error('❌ Error capturado al enviar el Web Push:', err);
 
-                        // 2. DISPARAMOS EL WEB PUSH
-                        subsFiltradas.forEach(async (s) => {
-                            try {
-                                await sendNotification(
-                                    s,
-                                    tituloAdmin,
-                                    mensajeAdmin,
-                                    urlRedireccionAdmin,
-                                    s.usuario, // 👈 Cambia 's.user' por 's.usuario' para que lea el campo correcto
-                                    'NUEVO_PEDIDO',
-                                    pedidoDB._id
-                                );
-                                console.log(`✅ Push enviado con éxito al dispositivo del usuario: ${s.usuario}`);
-
-                            } catch (err) {
-                                console.error('❌ Error capturado al enviar el Web Push:', err);
-                                if (err.statusCode === 410 || err.statusCode === 404) {
-                                    await PushSubscription.findByIdAndDelete(s._id);
-                                    console.log(`[Limpieza] Suscripción eliminada de MongoDB.`);
-                                }
+                            if (err.statusCode === 410 || err.statusCode === 404) {
+                                await PushSubscription.findByIdAndDelete(s._id);
+                                console.log(`[Limpieza] Suscripción eliminada por expiración.`);
                             }
-                        });
-                    }
+                        }
+                    });
                 }
             }
         } catch (errorNotiPedido) {
             console.error('Error de seguridad en notificaciones de pedido:', errorNotiPedido);
         }
+        // =========================================================================
+
         // =========================================================================
 
         // =========================================================================

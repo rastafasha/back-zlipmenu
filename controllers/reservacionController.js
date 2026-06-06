@@ -4,6 +4,7 @@ const Tienda = require('../models/tienda');
 const UsuarioController = require('../controllers/usuarios');
 const Usuario = require('../models/usuario');
 const mongoose = require('mongoose');
+const Notificacion = require('../models/notificacion');
 const PushSubscription = require('../models/push-subscription');
 const { sendNotification } = require('../helpers/notificaciones');
 const { verificarCapacidadTurno } = require('../helpers/reservacion-helper');
