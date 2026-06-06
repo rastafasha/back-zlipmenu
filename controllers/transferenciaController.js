@@ -1,15 +1,13 @@
 const { response } = require('express');
 const Transferencia = require('../models/transferencia');
-const nodemailer = require('nodemailer');
-const smtpTransport = require('nodemailer-smtp-transport');
 const Congeneral = require('../models/congeneral');
 const ventaController = require('./ventaController');
 const Notificacion = require('../models/notificacion');
 const PushSubscription = require('../models/push-subscription');
+const nodemailer = require('nodemailer');
+const smtpTransport = require('nodemailer-smtp-transport');
 const { sendNotification } = require('../helpers/notificaciones');
-
-
-
+const { enviarMensajeWhatsApp } = require('../helpers/whatsapp-helper');
 
 const transporter = nodemailer.createTransport(smtpTransport({
     host: process.env.HOST_EMAIL,
@@ -63,22 +61,7 @@ const getTransferencia = async (req, res) => {
         });
 
 };
-const { enviarMensajeWhatsApp } = require('../helpers/whatsapp-helper');
-const nodemailer = require('nodemailer');
-const smtpTransport = require('nodemailer-smtp-transport');
-const Tienda = require('../models/tienda'); // Tu modelo de tiendas
-// Asegúrate de importar tus modelos de Notificacion, PushSubscription y sendNotification aquí arriba
 
-// Configuración de tu Nodemailer para dominio propio (Igual al del Cron)
-const transporter = nodemailer.createTransport(smtpTransport({
-    host: process.env.EMAIL_SMTP_HOST,
-    port: process.env.EMAIL_SMTP_PORT || 465,
-    secure: process.env.EMAIL_SMTP_PORT == 465,
-    auth: {
-        user: process.env.EMAIL_BACKEND,
-        pass: process.env.EMAIL_BACKEND_PASS
-    }
-}));
 
 const crearTransferencia = async (req, res) => {
 
