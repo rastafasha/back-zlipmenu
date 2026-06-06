@@ -30,6 +30,7 @@ var TiendaSchema = Schema({
     user: { type: Schema.ObjectId, ref: 'user' },
     productos: { type: Schema.ObjectId, ref: 'productos' },
     has_reservacion: { type: Boolean, required: true, default: false },
+    capacidad_por_hora:{type: Number, required: false },
     isFeatured: { type: Boolean, required: false },
     
     // 💳 Campos listos para el esquema de suscripción:

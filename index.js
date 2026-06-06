@@ -5,6 +5,7 @@ const { dbConnection } = require('./database/config');
 const cors = require('cors');
 const path = require('path');
 const socketIO = require('socket.io');
+require('./config/recordatorios-cron');
 
 // Check if we're running on a serverless platform
 const isServerless = process.env.RENDER === '1' || process.env.VERCEL === '1';
