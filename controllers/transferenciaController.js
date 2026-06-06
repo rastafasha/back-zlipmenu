@@ -1,6 +1,7 @@
 const { response } = require('express');
 const Transferencia = require('../models/transferencia');
 const nodemailer = require('nodemailer');
+const smtpTransport = require('nodemailer-smtp-transport');
 const Congeneral = require('../models/congeneral');
 const ventaController = require('./ventaController');
 const Notificacion = require('../models/notificacion');
@@ -8,13 +9,17 @@ const PushSubscription = require('../models/push-subscription');
 const { sendNotification } = require('../helpers/notificaciones');
 
 
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
+
+
+const transporter = nodemailer.createTransport(smtpTransport({
+    host: process.env.HOST_EMAIL,
+    port: process.env.PORT_EMAIL || 465,
+    secure: process.env.PORT_EMAIL == 465,
     auth: {
         user: process.env.EMAIL_BACKEND,
         pass: process.env.PASSWORD_APP
     }
-});
+}));
 
 const getTransferencias = async (req, res) => {
 
@@ -58,6 +63,22 @@ const getTransferencia = async (req, res) => {
         });
 
 };
+const { enviarMensajeWhatsApp } = require('../helpers/whatsapp-helper');
+const nodemailer = require('nodemailer');
+const smtpTransport = require('nodemailer-smtp-transport');
+const Tienda = require('../models/tienda'); // Tu modelo de tiendas
+// Asegúrate de importar tus modelos de Notificacion, PushSubscription y sendNotification aquí arriba
+
+// Configuración de tu Nodemailer para dominio propio (Igual al del Cron)
+const transporter = nodemailer.createTransport(smtpTransport({
+    host: process.env.EMAIL_SMTP_HOST,
+    port: process.env.EMAIL_SMTP_PORT || 465,
+    secure: process.env.EMAIL_SMTP_PORT == 465,
+    auth: {
+        user: process.env.EMAIL_BACKEND,
+        pass: process.env.EMAIL_BACKEND_PASS
+    }
+}));
 
 const crearTransferencia = async (req, res) => {
 
@@ -72,7 +93,7 @@ const crearTransferencia = async (req, res) => {
         const id = transferenciaDB._id;
 
         // =========================================================================
-        // 🚀 NUEVA LÓGICA: NOTIFICAR A DUEÑOS (ADMIN) Y SUPERADMINS
+        // 🚀 NUEVA LÓGICA: NOTIFICAR A DUEÑOS (ADMIN) Y SUPERADMINS + WHATSAPP & EMAIL
         // =========================================================================
         try {
             // 1. Buscamos las suscripciones Push y cargamos la información de sus usuarios
@@ -86,7 +107,7 @@ const crearTransferencia = async (req, res) => {
             if (adminsSubs.length > 0) {
                 const tituloAdmin = '¡Nuevo Pago Registrado! 💰';
                 const mensajeAdmin = `El cliente reportó una transferencia por ${transferenciaDB.amount || ''}$.`;
-                const urlRedireccionAdmin = `/panel-admin/pagos`;
+                const urlRedireccionAdmin = `/dashboard/transferencias`;
 
                 // Agrupamos los IDs de los administradores únicos para no duplicar filas en la BD
                 const adminIdsUnicos = [...new Set(adminsSubs.map(s => s.usuario._id.toString()))];
@@ -115,13 +136,74 @@ const crearTransferencia = async (req, res) => {
                         'NUEVO_PAGO',
                         id
                     ).catch(err => {
-                        // Limpieza automática si el navegador bloqueó o desinstaló el push
                         if (err.statusCode === 410 || err.statusCode === 404) {
                             s.deleteOne().catch(e => console.log('Error eliminando sub obsoleta', e));
                         }
                     });
                 });
             }
+
+            // =========================================================================
+            // 📱 DISPARO DE WHATSAPP Y EMAIL EXTERNOS (CANALES AUTOMÁTICOS)
+            // =========================================================================
+            // Extraemos de forma segura el ID de la tienda del cuerpo o de la transferencia
+            // Asegúrate de que el req.body mande la propiedad que asocia la tienda (ej: tienda o local)
+            const tiendaId = transferenciaDB.tienda || transferenciaDB.local || req.body.tiendaId;
+
+            if (tiendaId) {
+                // Buscamos la tienda en MongoDB para extraer sus configuraciones de notificaciones, email y teléfono
+                const tiendaDB = await Tienda.findById(tiendaId);
+
+                if (tiendaDB) {
+                    const localIdStr = tiendaDB._id.toString();
+                    const nombreRestaurante = tiendaDB.nombre || 'el restaurante';
+                    
+                    // Formateamos el teléfono de la tienda usando la lógica limpia
+                    let telefonoTienda = tiendaDB.telefono ? tiendaDB.telefono.replace(/\D/g, '') : '';
+                    if (telefonoTienda.startsWith('0')) {
+                        telefonoTienda = '58' + telefonoTienda.substring(1);
+                    }
+
+                    // Construimos los textos informativos con negritas para WhatsApp
+                    const textoWhatsApp = `¡Alerta de Pago! 💰 Se ha reportado una nueva transferencia para *${nombreRestaurante}*.\n\n` +
+                                          `💵 *Monto:* ${transferenciaDB.amount || ''}$.\n` +
+                                          `📝 *Referencia:* ${transferenciaDB.reference || 'N/A'}\n` +
+                                          `👤 *Cliente ID:* ${uid}\n\n` +
+                                          `Por favor, verifique su panel administrativo para confirmar los fondos. ✨`;
+
+                    const textoEmail = `Alerta de Pago: Se ha reportado una nueva transferencia para ${nombreRestaurante}.\n\n` +
+                                       `Monto: ${transferenciaDB.amount || ''}$.\n` +
+                                       `Referencia: ${transferenciaDB.reference || 'N/A'}\n` +
+                                       `Cliente ID: ${uid}\n\n` +
+                                       `Por favor, verifique su panel administrativo para confirmar los fondos.`;
+
+                    // Envió asíncrono de WhatsApp (No bloquea la respuesta al cliente)
+                    if (telefonoTienda) {
+                        enviarMensajeWhatsApp(localIdStr, telefonoTienda, textoWhatsApp)
+                            .then(enviado => {
+                                if (enviado) console.log(`💬 WhatsApp de pago enviado al restaurante: ${localIdStr}`);
+                            })
+                            .catch(err => console.error('Error enviando WhatsApp de pago:', err.message));
+                    }
+
+                    // Envió asíncrono de Correo Corporativo al dueño del local (Si tiene configurado email de destino)
+                    const correoDestinoAdmin = tiendaDB.emailAdmin || tiendaDB.email;
+                    if (correoDestinoAdmin) {
+                        transporter.sendMail({
+                            from: process.env.EMAIL_BACKEND,
+                            to: correoDestinoAdmin,
+                            subject: `🚨 Alerta de Pago: Nueva Transferencia en ${nombreRestaurante} 💰`,
+                            text: textoEmail
+                        }).then(() => {
+                            console.log(`=== Correo de alerta enviado a: ${correoDestinoAdmin} ===`);
+                        }).catch(emailError => {
+                            console.error('Error enviando correo de alerta de pago:', emailError.message);
+                        });
+                    }
+                }
+            }
+            // =========================================================================
+
         } catch (errorNotiAdmin) {
             console.error('Error enviando notificaciones al equipo administrativo:', errorNotiAdmin);
         }
@@ -140,6 +222,7 @@ const crearTransferencia = async (req, res) => {
         });
     }
 };
+
 
 const actualizarTransferencia = async (req, res) => {
 

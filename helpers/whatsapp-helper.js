@@ -20,11 +20,11 @@ const crearClienteWhatsApp = (restauranteId) => {
         args: [
             '--no-sandbox', 
             '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage', // 🔥 Crucial para servidores con poca RAM (Render) [1]
-            '--disable-accelerated-2d-canvas',
+            '--disable-dev-shm-usage', // Evita problemas de memoria compartida en Render
+            '--disable-gpu',
             '--no-first-run',
             '--no-zygote',
-            '--single-process' // Reduce el uso de memoria en Render
+            '--single-process' // Reduce drásticamente el uso de RAM
         ],
     }
     });
