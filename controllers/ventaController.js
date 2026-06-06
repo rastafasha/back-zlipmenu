@@ -558,56 +558,73 @@ function get_solicitud(req, res) {
     });
 }
 
-function set_track(req, res) {
-    var id = req.params['id'];
-    var data = req.body;
+async function set_track(req, res) {
+    const id = req.params['id'];
+    const data = req.body;
 
-    Venta.findByIdAndUpdate(
-        { _id: id }, 
-        { tracking_number: data.tracking_number, estado: 'Enviado' }, 
-        { new: true }, 
-        (err, venta_data) => {
-            if (venta_data) {
-                // 1. Responder de inmediato al administrador
-                res.status(200).send({ venta: venta_data });
+    try {
+        // 1. Actualizamos la venta. { new: true } nos devuelve el documento YA modificado.
+        const venta_data = await Venta.findByIdAndUpdate(
+            { _id: id }, 
+            { tracking_number: data.tracking_number, estado: 'Enviado' }, 
+            { new: true }
+        );
 
-                // 2. Buscar al usuario dueño de la venta para obtener su PushSubscription
-                const usuarioId = venta_data.user || venta_data.usuario; 
-                
-                if (usuarioId) {
-                    // Buscamos el usuario en la BD (asumiendo que tienes un modelo Usuario)
-                    Usuario.findById(usuarioId, (errUsuario, usuario_data) => {
-                        // Verificamos si el usuario existe y si tiene una suscripción guardada
-                        if (usuario_data && usuario_data.pushSubscription) {
-                            
-                            try {
-                                // 3. Estructuramos la data para tu helper de notificaciones
-                                const payload = {
-                                    tipo: PEDIDO_ENVIADO,
-                                    titulo: "¡Pedido en camino! 🚀",
-                                    cuerpo: `Tu tracking number es: ${venta_data.tracking_number}`,
-                                    ventaId: id
-                                };
+        if (!venta_data) {
+            return res.status(403).send({ message: 'No se pudo actualizar la venta, intente de nuevo.' });
+        }
 
-                                // 4. Le pasamos al helper tanto la SUSCRIPCIÓN como el CONTENIDO
-                                sendNotification(usuario_data.pushSubscription, payload);
+        // 2. Respondemos al administrador de inmediato para liberar la pantalla
+        res.status(200).send({ venta: venta_data });
 
-                            } catch (errorPush) {
-                                console.error("Error al ejecutar el helper de push:", errorPush);
-                            }
+        // 3. 🚀 FLUJO ASÍNCRONO DE NOTIFICACIÓN PARA EL CLIENTE (De fondo)
+        const clienteId = venta_data.user || venta_data.usuario || venta_data.cliente; 
+        
+        if (clienteId) {
+            // Buscamos si el cliente tiene tokens de dispositivos registrados en tu colección real
+            // Cambia 'usuario' por 'user' si tu modelo de colección guarda el campo diferente
+            const subsCliente = await PushSubscription.find({ usuario: clienteId });
 
-                        } else {
-                            console.log("El usuario no tiene una PushSubscription activa.");
+            if (subsCliente.length > 0) {
+                const tituloCliente = "¡Tu pedido va en camino! 🚀";
+                const mensajeCliente = `El número de seguimiento de tu orden es: ${venta_data.tracking_number}`;
+                const urlRedireccionCliente = `/my-account/pedidos/${venta_data._id}`;
+
+                // Recorremos los dispositivos activos de ese cliente
+                subsCliente.forEach(async (s) => {
+                    try {
+                        // Pasamos los parámetros en el orden exacto que espera tu helper real async
+                        await sendNotification(
+                            s,                    // El objeto de suscripción completo de Mongo
+                            tituloCliente,        // El título
+                            mensajeCliente,       // El cuerpo/mensaje
+                            urlRedireccionCliente,// La URL de redirección en Angular
+                            s.usuario,            // El ID del usuario destino
+                            'PEDIDO_ENVIADO',     // El tipo/enum exacto
+                            venta_data._id        // El ID de referencia del pedido/venta
+                        );
+                        console.log(`✅ Alerta de envío despachada al cliente: ${s.usuario}`);
+
+                    } catch (pushErr) {
+                        console.error("❌ Error enviando push al cliente:", pushErr);
+                        // Limpieza automática si el token del navegador de su teléfono expiró
+                        if (pushErr.statusCode === 410 || pushErr.statusCode === 404) {
+                            await PushSubscription.findByIdAndDelete(s._id);
+                            console.log(`[Limpieza] Suscripción del cliente eliminada por expiración.`);
                         }
-                    });
-                }
-
+                    }
+                });
             } else {
-                res.status(500).send({ error: err });
+                console.log("El cliente no tiene dispositivos PushSubscription registrados.");
             }
         }
-    );
+
+    } catch (err) {
+        console.error("Error en set_track:", err);
+        res.status(500).send({ error: err.message || 'Error interno en el servidor' });
+    }
 }
+
 
 
 function update_enviado(req, res) {

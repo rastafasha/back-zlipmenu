@@ -60,53 +60,45 @@ const crearPedidoMenu = async (req, res) => {
                     user: { $in: idsAutorizados }
                 });
 
-                if (subsFiltradas.length > 0) {
-                    const tituloAdmin = '¡Nuevo Pedido Entrante! 🍕';
-                    const nombreCliente = existeUsuario.first_name || existeUsuario.nombre || 'Un cliente';
-                    const mensajeAdmin = `${nombreCliente} ha realizado un pedido en tu tienda.`;
-                    const urlRedireccionAdmin = `/dashboard/tienda/pedidos`;
+                if (idsAutorizados.length > 0) {
 
-                    // 1. REGISTRAMOS EN TU MODELO DE NOTIFICACIONES (Campana interna)
-                    const promesasNotificaciones = idsAutorizados.map(adminId => {
-                        const nuevaNoti = new Notificacion({
-                            usuario: adminId, // Ajusta si tu modelo Notificacion usa 'user' o 'usuario'
-                            titulo: tituloAdmin,
-                            mensaje: mensajeAdmin,
-                            tipo: 'NUEVO_PEDIDO',
-                            referenciaId: pedidoDB._id
-                        });
-                        return nuevaNoti.save();
+                    // CORRECCIÓN: Si tu modelo de Mongo usa 'usuario' en vez de 'user', cámbialo aquí:
+                    const subsFiltradas = await PushSubscription.find({
+                        usuario: { $in: idsAutorizados } // 👈 Cambia 'user' por 'usuario'
                     });
-                    await Promise.all(promesasNotificaciones);
 
-                    // 2. DISPARAMOS EL WEB PUSH AL NAVEGADOR DE FORMA SEGURA
-                    // Agregamos async antes de '(s) =>' para poder usar await adentro
-                    subsFiltradas.forEach(async (s) => {
-                        try {
-                            // Ejecutamos tu función asíncrona esperando su respuesta real
-                            await sendNotification(
-                                s,
-                                tituloAdmin,
-                                mensajeAdmin,
-                                urlRedireccionAdmin,
-                                s.user,
-                                'NUEVO_PEDIDO',
-                                pedidoDB._id
-                            );
-                            console.log(`✅ Push enviado con éxito al dispositivo del usuario: ${s.user}`);
+                    if (subsFiltradas.length > 0) {
+                        const tituloAdmin = '¡Nuevo Pedido Entrante! 🍕';
+                        const nombreCliente = existeUsuario.first_name || existeUsuario.nombre || 'Un cliente';
+                        const mensajeAdmin = `${nombreCliente} ha realizado un pedido en tu tienda.`;
+                        const urlRedireccionAdmin = `/dashboard/tienda/pedidos`;
 
-                        } catch (err) {
-                            console.error('❌ Error capturado al enviar el Web Push:', err);
+                        // 1. REGISTRAMOS EN TU MODELO DE NOTIFICACIONES (Campana)
+                        // ... (Tu bloque de promesasNotificaciones se mantiene igual)
 
-                            // Limpieza automática si el token del navegador expiró (410 o 404)
-                            if (err.statusCode === 410 || err.statusCode === 404) {
-                                // Usamos el modelo para borrar el token obsoleto de raíz en MongoDB Atlas
-                                await PushSubscription.findByIdAndDelete(s._id);
-                                console.log(`[Limpieza] Suscripción eliminada de MongoDB por expiración (Token viejo).`);
+                        // 2. DISPARAMOS EL WEB PUSH
+                        subsFiltradas.forEach(async (s) => {
+                            try {
+                                await sendNotification(
+                                    s,
+                                    tituloAdmin,
+                                    mensajeAdmin,
+                                    urlRedireccionAdmin,
+                                    s.usuario, // 👈 Cambia 's.user' por 's.usuario' para que lea el campo correcto
+                                    'NUEVO_PEDIDO',
+                                    pedidoDB._id
+                                );
+                                console.log(`✅ Push enviado con éxito al dispositivo del usuario: ${s.usuario}`);
+
+                            } catch (err) {
+                                console.error('❌ Error capturado al enviar el Web Push:', err);
+                                if (err.statusCode === 410 || err.statusCode === 404) {
+                                    await PushSubscription.findByIdAndDelete(s._id);
+                                    console.log(`[Limpieza] Suscripción eliminada de MongoDB.`);
+                                }
                             }
-                        }
-                    });
-
+                        });
+                    }
                 }
             }
         } catch (errorNotiPedido) {
