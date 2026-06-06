@@ -44,63 +44,74 @@ const crearPedidoMenu = async (req, res) => {
         // 🔒 SEGURIDAD COMPLETA: FILTRADO EXACTO POR LOCAL DEL USUARIO
         // =========================================================================
         try {
-    // Buscamos los usuarios administradores autorizados
-    const usuariosAutorizados = await Usuario.find({
-        $or: [
-            { role: 'SUPERADMIN' },
-            { role: 'ADMIN', local: body.tienda }
-        ]
-    });
-
-    const idsAutorizados = usuariosAutorizados.map(u => u._id.toString());
-
-    if (idsAutorizados.length > 0) {
-        // CORRECCIÓN 1: Cambiamos 'usuario' por 'user' para coincidir con tu modelo
-        const subsFiltradas = await PushSubscription.find({
-            user: { $in: idsAutorizados } 
-        });
-
-        if (subsFiltradas.length > 0) {
-            const tituloAdmin = '¡Nuevo Pedido Entrante! 🍕';
-            const nombreCliente = existeUsuario.first_name || existeUsuario.nombre || 'Un cliente';
-            const mensajeAdmin = `${nombreCliente} ha realizado un pedido en tu tienda.`;
-            const urlRedireccionAdmin = `/dashboard/tienda/pedidos`;
-
-            // 1. REGISTRAMOS EN TU MODELO DE NOTIFICACIONES (Campana interna)
-            const promesasNotificaciones = idsAutorizados.map(adminId => {
-                const nuevaNoti = new Notificacion({
-                    usuario: adminId, // Ajusta si tu modelo Notificacion usa 'user' o 'usuario'
-                    titulo: tituloAdmin,
-                    mensaje: mensajeAdmin,
-                    tipo: 'NUEVO_PEDIDO', 
-                    referenciaId: pedidoDB._id
-                });
-                return nuevaNoti.save();
+            // Buscamos los usuarios administradores autorizados
+            const usuariosAutorizados = await Usuario.find({
+                $or: [
+                    { role: 'SUPERADMIN' },
+                    { role: 'ADMIN', local: body.tienda }
+                ]
             });
-            await Promise.all(promesasNotificaciones);
 
-            // 2. DISPARAMOS EL WEB PUSH AL NAVEGADOR
-            subsFiltradas.forEach(s => {
-                // CORRECCIÓN 2: Pasamos 's' completo si guardaste endpoint/keys en la raíz del documento
-                sendNotification(
-                    s, 
-                    tituloAdmin,
-                    mensajeAdmin,
-                    urlRedireccionAdmin,
-                    s.user, // CORRECCIÓN 3: s.user en lugar de s.usuario
-                    'NUEVO_PEDIDO', 
-                    pedidoDB._id
-                ).catch(err => {
-                    if (err.statusCode === 410 || err.statusCode === 404) {
-                        s.deleteOne().catch(e => console.log('Error eliminando sub obsoleta', e));
-                    }
+            const idsAutorizados = usuariosAutorizados.map(u => u._id.toString());
+
+            if (idsAutorizados.length > 0) {
+                // CORRECCIÓN 1: Cambiamos 'usuario' por 'user' para coincidir con tu modelo
+                const subsFiltradas = await PushSubscription.find({
+                    user: { $in: idsAutorizados }
                 });
-            });
+
+                if (subsFiltradas.length > 0) {
+                    const tituloAdmin = '¡Nuevo Pedido Entrante! 🍕';
+                    const nombreCliente = existeUsuario.first_name || existeUsuario.nombre || 'Un cliente';
+                    const mensajeAdmin = `${nombreCliente} ha realizado un pedido en tu tienda.`;
+                    const urlRedireccionAdmin = `/dashboard/tienda/pedidos`;
+
+                    // 1. REGISTRAMOS EN TU MODELO DE NOTIFICACIONES (Campana interna)
+                    const promesasNotificaciones = idsAutorizados.map(adminId => {
+                        const nuevaNoti = new Notificacion({
+                            usuario: adminId, // Ajusta si tu modelo Notificacion usa 'user' o 'usuario'
+                            titulo: tituloAdmin,
+                            mensaje: mensajeAdmin,
+                            tipo: 'NUEVO_PEDIDO',
+                            referenciaId: pedidoDB._id
+                        });
+                        return nuevaNoti.save();
+                    });
+                    await Promise.all(promesasNotificaciones);
+
+                    // 2. DISPARAMOS EL WEB PUSH AL NAVEGADOR DE FORMA SEGURA
+                    // Agregamos async antes de '(s) =>' para poder usar await adentro
+                    subsFiltradas.forEach(async (s) => {
+                        try {
+                            // Ejecutamos tu función asíncrona esperando su respuesta real
+                            await sendNotification(
+                                s,
+                                tituloAdmin,
+                                mensajeAdmin,
+                                urlRedireccionAdmin,
+                                s.user,
+                                'NUEVO_PEDIDO',
+                                pedidoDB._id
+                            );
+                            console.log(`✅ Push enviado con éxito al dispositivo del usuario: ${s.user}`);
+
+                        } catch (err) {
+                            console.error('❌ Error capturado al enviar el Web Push:', err);
+
+                            // Limpieza automática si el token del navegador expiró (410 o 404)
+                            if (err.statusCode === 410 || err.statusCode === 404) {
+                                // Usamos el modelo para borrar el token obsoleto de raíz en MongoDB Atlas
+                                await PushSubscription.findByIdAndDelete(s._id);
+                                console.log(`[Limpieza] Suscripción eliminada de MongoDB por expiración (Token viejo).`);
+                            }
+                        }
+                    });
+
+                }
+            }
+        } catch (errorNotiPedido) {
+            console.error('Error de seguridad en notificaciones de pedido:', errorNotiPedido);
         }
-    }
-} catch (errorNotiPedido) {
-    console.error('Error de seguridad en notificaciones de pedido:', errorNotiPedido);
-}
         // =========================================================================
 
         // =========================================================================
