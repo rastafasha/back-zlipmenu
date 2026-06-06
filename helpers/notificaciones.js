@@ -69,7 +69,7 @@ const sendNotification = async (userSubscription, title, message, url = '/notifi
       notification: {
         title,
         body: message,
-        icon: 'hhttps://admin.zlipmenu.com/assets/icons/icon-128x128.png',
+        icon: 'https://admin-zlipmenu.vercel.app/assets/icons/icon-192x192.png',
         vibrate: [100, 50, 100],
         data: { url }
       }
