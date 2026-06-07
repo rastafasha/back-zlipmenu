@@ -62,12 +62,15 @@ const getTransferencia = async (req, res) => {
 
 };
 
-
 const crearTransferencia = async (req, res) => {
+    const uid = req.uid; // ID del cliente que reporta el pago
+    
+    // 🔧 SEGURIDAD DE ENTRADA: Capturamos el ID de la tienda del body tal cual lo haces en pedidos
+    const idTiendaTarget = req.body.tienda || req.body.tiendaId;
 
-    const uid = req.uid; // ID del cliente que crea la transferencia
     const transferencia = new Transferencia({
         user: uid,
+        tienda: idTiendaTarget, // Aseguramos que se guarde amarrado a la tienda
         ...req.body
     });
 
@@ -76,122 +79,116 @@ const crearTransferencia = async (req, res) => {
         const id = transferenciaDB._id;
 
         // =========================================================================
-        // 🚀 NUEVA LÓGICA: NOTIFICAR A DUEÑOS (ADMIN) Y SUPERADMINS + WHATSAPP & EMAIL
+        // 🚀 NUEVA LÓGICA REPARADA: FILTRADO EXACTO POR TIENDA (Igual que en pedidos)
         // =========================================================================
         try {
-            // 1. Buscamos las suscripciones Push y cargamos la información de sus usuarios
-            const todasLasSubs = await PushSubscription.find().populate('usuario');
-
-            // 2. Filtramos solo las que pertenecen a SUPERADMIN o ADMIN (dueños de tiendas)
-            const adminsSubs = todasLasSubs.filter(sub => {
-                return sub.usuario && (sub.usuario.role === 'SUPERADMIN' || sub.usuario.role === 'ADMIN');
+            // 1. Buscamos los usuarios administradores dueños de ESTA tienda específica
+            const usuariosAutorizados = await Usuario.find({
+                $or: [
+                    { role: 'SUPERADMIN' },
+                    { role: 'ADMIN', local: idTiendaTarget } // Evita que se crucen los paneles
+                ]
             });
 
-            if (adminsSubs.length > 0) {
-                const tituloAdmin = '¡Nuevo Pago Registrado! 💰';
-                const mensajeAdmin = `El cliente reportó una transferencia por ${transferenciaDB.amount || ''}$.`;
-                const urlRedireccionAdmin = `/dashboard/transferencias`;
+            const idsAutorizados = usuariosAutorizados.map(u => u._id.toString());
 
-                // Agrupamos los IDs de los administradores únicos para no duplicar filas en la BD
-                const adminIdsUnicos = [...new Set(adminsSubs.map(s => s.usuario._id.toString()))];
-
-                // 3. GUARDAMOS EN TU SCHEMA DE NOTIFICACIONES (Para la campana en sus paneles)
-                const promesasNotificaciones = adminIdsUnicos.map(adminId => {
-                    const nuevaNoti = new Notificacion({
-                        usuario: adminId,
-                        titulo: tituloAdmin,
-                        mensaje: mensajeAdmin,
-                        tipo: 'NUEVO_PAGO', // Satisface tu ENUM permitido
-                        referenciaId: id
-                    });
-                    return nuevaNoti.save();
+            if (idsAutorizados.length > 0) {
+                // 2. Buscamos las suscripciones push asociadas exclusivamente a esos administradores
+                const subsFiltradas = await PushSubscription.find({
+                    usuario: { $in: idsAutorizados }
                 });
-                await Promise.all(promesasNotificaciones);
 
-                // 4. DISPARAMOS EL WEB PUSH AL NAVEGADOR O CELULAR DE CADA UNO
-                adminsSubs.forEach(s => {
-                    sendNotification(
-                        s.subscription,
-                        tituloAdmin,
-                        mensajeAdmin,
-                        urlRedireccionAdmin,
-                        s.usuario._id,
-                        'NUEVO_PAGO',
-                        id
-                    ).catch(err => {
-                        if (err.statusCode === 410 || err.statusCode === 404) {
-                            s.deleteOne().catch(e => console.log('Error eliminando sub obsoleta', e));
-                        }
+                if (subsFiltradas.length > 0) {
+                    const tituloAdmin = '¡Nuevo Pago Registrado! 💰';
+                    const mensajeAdmin = `El cliente reportó una transferencia por ${transferenciaDB.amount || 0}$.`;
+                    const urlRedireccionAdmin = `/dashboard/transferencias`;
+
+                    // 3. GUARDAMOS EN TU SCHEMA DE NOTIFICACIONES (Para que aparezca en el listado de la campana)
+                    const adminIdsUnicos = [...new Set(idsAutorizados)];
+                    const promesasNotificaciones = adminIdsUnicos.map(adminId => {
+                        const nuevaNoti = new Notificacion({
+                            usuario: adminId,
+                            titulo: tituloAdmin,
+                            mensaje: mensajeAdmin,
+                            tipo: 'NUEVO_PAGO', // Satisface tu ENUM permitido
+                            referenciaId: id
+                        });
+                        return nuevaNoti.save();
                     });
-                });
+                    await Promise.all(promesasNotificaciones);
+                    console.log(`🔔 Alertas guardadas con éxito en el listado para ${adminIdsUnicos.length} administradores.`);
+
+                    // 4. DISPARAMOS EL WEB PUSH AL NAVEGADOR
+                    subsFiltradas.forEach(s => {
+                        sendNotification(
+                            s, // Pasamos la suscripción directa como lo haces en pedidos
+                            tituloAdmin,
+                            mensajeAdmin,
+                            urlRedireccionAdmin,
+                            s.usuario,
+                            'NUEVO_PAGO',
+                            id
+                        ).catch(err => {
+                            console.error('Error enviando push de pago:', err);
+                            if (err.statusCode === 410 || err.statusCode === 404) {
+                                PushSubscription.findByIdAndDelete(s._id).catch(e => console.log(e));
+                            }
+                        });
+                    });
+                }
             }
 
             // =========================================================================
             // 📱 DISPARO DE WHATSAPP Y EMAIL EXTERNOS (CANALES AUTOMÁTICOS)
             // =========================================================================
-            // Extraemos de forma segura el ID de la tienda del cuerpo o de la transferencia
-            // Asegúrate de que el req.body mande la propiedad que asocia la tienda (ej: tienda o local)
-            const tiendaId = transferenciaDB.tienda || transferenciaDB.local || req.body.tiendaId;
-
-            if (tiendaId) {
-                // Buscamos la tienda en MongoDB para extraer sus configuraciones de notificaciones, email y teléfono
-                const tiendaDB = await Tienda.findById(tiendaId);
+            if (idTiendaTarget) {
+                const tiendaDB = await Tienda.findById(idTiendaTarget);
 
                 if (tiendaDB) {
                     const localIdStr = tiendaDB._id.toString();
                     const nombreRestaurante = tiendaDB.nombre || 'el restaurante';
                     
-                    // Formateamos el teléfono de la tienda usando la lógica limpia
                     let telefonoTienda = tiendaDB.telefono ? tiendaDB.telefono.replace(/\D/g, '') : '';
                     if (telefonoTienda.startsWith('0')) {
                         telefonoTienda = '58' + telefonoTienda.substring(1);
                     }
 
-                    // Construimos los textos informativos con negritas para WhatsApp
                     const textoWhatsApp = `¡Alerta de Pago! 💰 Se ha reportado una nueva transferencia para *${nombreRestaurante}*.\n\n` +
-                                          `💵 *Monto:* ${transferenciaDB.amount || ''}$.\n` +
-                                          `📝 *Referencia:* ${transferenciaDB.reference || 'N/A'}\n` +
-                                          `👤 *Cliente ID:* ${uid}\n\n` +
+                                          `💵 *Monto:* ${transferenciaDB.amount || 0}$.\n` +
+                                          `📝 *Referencia:* ${transferenciaDB.reference || 'N/A'}\n\n` +
                                           `Por favor, verifique su panel administrativo para confirmar los fondos. ✨`;
 
-                    const textoEmail = `Alerta de Pago: Se ha reportado una nueva transferencia para ${nombreRestaurante}.\n\n` +
-                                       `Monto: ${transferenciaDB.amount || ''}$.\n` +
-                                       `Referencia: ${transferenciaDB.reference || 'N/A'}\n` +
-                                       `Cliente ID: ${uid}\n\n` +
-                                       `Por favor, verifique su panel administrativo para confirmar los fondos.`;
-
-                    // Envió asíncrono de WhatsApp (No bloquea la respuesta al cliente)
+                    // Envío de WhatsApp real usando tu helper activo
                     if (telefonoTienda) {
                         enviarMensajeWhatsApp(localIdStr, telefonoTienda, textoWhatsApp)
                             .then(enviado => {
-                                if (enviado) console.log(`💬 WhatsApp de pago enviado al restaurante: ${localIdStr}`);
+                                if (enviado) console.log(`💬 WhatsApp de pago entregado al restaurante: ${localIdStr}`);
                             })
                             .catch(err => console.error('Error enviando WhatsApp de pago:', err.message));
                     }
 
-                    // Envió asíncrono de Correo Corporativo al dueño del local (Si tiene configurado email de destino)
+                    // Envío de correo corporativo al administrador del local
                     const correoDestinoAdmin = tiendaDB.emailAdmin || tiendaDB.email;
                     if (correoDestinoAdmin) {
                         transporter.sendMail({
                             from: process.env.EMAIL_BACKEND,
                             to: correoDestinoAdmin,
                             subject: `🚨 Alerta de Pago: Nueva Transferencia en ${nombreRestaurante} 💰`,
-                            text: textoEmail
+                            text: textoWhatsApp.replace(/\*/g, '') // Quitamos las negritas de WhatsApp para el mail
                         }).then(() => {
-                            console.log(`=== Correo de alerta enviado a: ${correoDestinoAdmin} ===`);
+                            console.log(`=== Correo de alerta de pago enviado a: ${correoDestinoAdmin} ===`);
                         }).catch(emailError => {
-                            console.error('Error enviando correo de alerta de pago:', emailError.message);
+                            console.error('Error enviando correo de pago:', emailError.message);
                         });
                     }
                 }
             }
-            // =========================================================================
 
         } catch (errorNotiAdmin) {
-            console.error('Error enviando notificaciones al equipo administrativo:', errorNotiAdmin);
+            console.error('Error interno procesando las alertas del pago:', errorNotiAdmin);
         }
-        // =========================================================================
 
+        // Retornamos la respuesta inmediata al cliente de Angular
         res.json({
             ok: true,
             transferencia: transferenciaDB
@@ -205,6 +202,7 @@ const crearTransferencia = async (req, res) => {
         });
     }
 };
+
 
 
 const actualizarTransferencia = async (req, res) => {
