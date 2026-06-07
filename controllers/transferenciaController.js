@@ -67,11 +67,11 @@ const crearTransferencia = async (req, res) => {
     const uid = req.uid; // ID del cliente que reporta el pago
 
     // 🔧 SEGURIDAD DE ENTRADA: Capturamos el ID de la tienda del body tal cual lo haces en pedidos
-    const idTiendaTarget = req.body.tienda || req.body.tiendaId;
+    const idTiendaTarget = req.body.local;
 
     const transferencia = new Transferencia({
         user: uid,
-        tienda: idTiendaTarget, // Aseguramos que se guarde amarrado a la tienda
+        local: idTiendaTarget, // Aseguramos que se guarde amarrado a la tienda
         ...req.body
     });
 
