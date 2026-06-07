@@ -65,7 +65,7 @@ const getTransferencia = async (req, res) => {
 
 const crearTransferencia = async (req, res) => {
     const uid = req.uid; // ID del cliente que reporta el pago
-    
+
     // 🔧 SEGURIDAD DE ENTRADA: Capturamos el ID de la tienda del body tal cual lo haces en pedidos
     const idTiendaTarget = req.body.tienda || req.body.tiendaId;
 
@@ -104,25 +104,26 @@ const crearTransferencia = async (req, res) => {
                     const mensajeAdmin = `El cliente reportó una transferencia por ${transferenciaDB.amount || 0}$.`;
                     const urlRedireccionAdmin = `/dashboard/transferencias`;
 
-                    // 3. GUARDAMOS EN TU SCHEMA DE NOTIFICACIONES (Para que aparezca en el listado de la campana)
+                    // 1. Guardamos en tu Schema de Notificaciones (Historial de la campana)
                     const adminIdsUnicos = [...new Set(idsAutorizados)];
                     const promesasNotificaciones = adminIdsUnicos.map(adminId => {
                         const nuevaNoti = new Notificacion({
                             usuario: adminId,
                             titulo: tituloAdmin,
                             mensaje: mensajeAdmin,
-                            tipo: 'NUEVO_PAGO', // Satisface tu ENUM permitido
-                            referenciaId: id
+                            tipo: 'NUEVO_PAGO', // Satisface tu ENUM médico/restaurante permitido
+                            referenciaId: id,
+                            leido: false // Aseguramos que nazca en falso para encender el globo
                         });
                         return nuevaNoti.save();
                     });
                     await Promise.all(promesasNotificaciones);
-                    console.log(`🔔 Alertas guardadas con éxito en el listado para ${adminIdsUnicos.length} administradores.`);
+                    console.log(`🔔 Alertas de pago guardadas en MongoDB para la campana.`);
 
-                    // 4. DISPARAMOS EL WEB PUSH AL NAVEGADOR
+                    // 2. CORREGIDO: Despachamos el Web Push en tiempo real usando s.subscription
                     subsFiltradas.forEach(s => {
                         sendNotification(
-                            s, // Pasamos la suscripción directa como lo haces en pedidos
+                            s.subscription, // 🔧 REPARADO: Pasamos el objeto de suscripción limpio igual que en reservas
                             tituloAdmin,
                             mensajeAdmin,
                             urlRedireccionAdmin,
@@ -132,7 +133,7 @@ const crearTransferencia = async (req, res) => {
                         ).catch(err => {
                             console.error('Error enviando push de pago:', err);
                             if (err.statusCode === 410 || err.statusCode === 404) {
-                                PushSubscription.findByIdAndDelete(s._id).catch(e => console.log(e));
+                                s.deleteOne().catch(e => console.log('Error eliminando sub obsoleta', e));
                             }
                         });
                     });
@@ -148,16 +149,16 @@ const crearTransferencia = async (req, res) => {
                 if (tiendaDB) {
                     const localIdStr = tiendaDB._id.toString();
                     const nombreRestaurante = tiendaDB.nombre || 'el restaurante';
-                    
+
                     let telefonoTienda = tiendaDB.telefono ? tiendaDB.telefono.replace(/\D/g, '') : '';
                     if (telefonoTienda.startsWith('0')) {
                         telefonoTienda = '58' + telefonoTienda.substring(1);
                     }
 
                     const textoWhatsApp = `¡Alerta de Pago! 💰 Se ha reportado una nueva transferencia para *${nombreRestaurante}*.\n\n` +
-                                          `💵 *Monto:* ${transferenciaDB.amount || 0}$.\n` +
-                                          `📝 *Referencia:* ${transferenciaDB.reference || 'N/A'}\n\n` +
-                                          `Por favor, verifique su panel administrativo para confirmar los fondos. ✨`;
+                        `💵 *Monto:* ${transferenciaDB.amount || 0}$.\n` +
+                        `📝 *Referencia:* ${transferenciaDB.reference || 'N/A'}\n\n` +
+                        `Por favor, verifique su panel administrativo para confirmar los fondos. ✨`;
 
                     // Envío de WhatsApp real usando tu helper activo
                     if (telefonoTienda) {
@@ -297,7 +298,7 @@ const updateStatus = async (req, res) => {
     const { status, observaciones } = req.body;
 
     try {
-       // 1. Buscamos la transferencia original e incluimos el pedido
+        // 1. Buscamos la transferencia original e incluimos el pedido
         const transferencia = await Transferencia.findById(id).populate('pedido');
         if (!transferencia) {
             return res.status(404).json({
