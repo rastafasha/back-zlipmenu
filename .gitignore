@@ -5,3 +5,4 @@ uploads/
 # Sesiones de WhatsApp (ZlipBot)
 whatsapp-sessions/
 whatsapp-session/
+.cache/
