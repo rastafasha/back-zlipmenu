@@ -66,20 +66,20 @@ cron.schedule('*/15 * * * *', async () => {
             }
 
             // --- FLUJO DE EMAIL ---
-            if (!reserva.notificado_email && reserva.email) { // Asegura que el modelo tenga el campo email
-                try {
-                    await transporter.sendMail({
-                        from: process.env.EMAIL_BACKEND,
-                        to: reserva.email,
-                        subject: `Recordatorio de tu Reserva en ${nombreRestaurante} 🍽️`,
-                        text: textoEmail
-                    });
-                    reserva.notificado_email = true;
-                    console.log(`📧 Email enviado con éxito a: ${reserva.email}`);
-                } catch (emailError) {
-                    console.error(`❌ Error enviando Email a ${reserva.email}:`, emailError.message);
-                }
-            }
+            // if (!reserva.notificado_email && reserva.email) { // Asegura que el modelo tenga el campo email
+            //     try {
+            //         await transporter.sendMail({
+            //             from: process.env.EMAIL_BACKEND,
+            //             to: reserva.email,
+            //             subject: `Recordatorio de tu Reserva en ${nombreRestaurante} 🍽️`,
+            //             text: textoEmail
+            //         });
+            //         reserva.notificado_email = true;
+            //         console.log(`📧 Email enviado con éxito a: ${reserva.email}`);
+            //     } catch (emailError) {
+            //         console.error(`❌ Error enviando Email a ${reserva.email}:`, emailError.message);
+            //     }
+            // }
 
             // Guardamos los cambios en la base de datos si se disparó alguna notificación
             if (reserva.isModified('notificado_whatsapp') || reserva.isModified('notificado_email')) {

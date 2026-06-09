@@ -16,6 +16,8 @@ const { check } = require('express-validator');
 const { validarCampos } = require('../middlewares/validar-campos');
 
 router.get('/', getCongenerals);
+router.get('/obtener', getCongenerals);
+router.get('/:id', getCongeneral);
 
 router.post('/', [
     validarJWT,
@@ -31,8 +33,7 @@ router.put('/:id', [
 
 router.delete('/:id', validarJWT, borrarCongeneral);
 
-router.get('/:id', getCongeneral);
-router.get('/obtener', getCongenerals);
+
 
 
 
