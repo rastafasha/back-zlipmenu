@@ -3,8 +3,8 @@ const router = express.Router();
 const translate = require('google-translate-api-x');
 
 // Importas tus dos modelos de Mongoose
-const Producto = require('../models/Producto');
-const Categoria = require('../models/Categoria');
+const Producto = require('../models/producto');
+const Categoria = require('../models/categoria');
 
 // 🚀 ENDPOINT DE MIGRACIÓN ÚNICA
 // Ejecutar una sola vez en producción para internacionalizar la data existente
