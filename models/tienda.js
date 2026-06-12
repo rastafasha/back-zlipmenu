@@ -14,10 +14,24 @@ var TiendaSchema = Schema({
     img: { type: String, required: false },
     //hero section
     img_hero: { type: String, required: false },
-    texto_hero_uno: { type: String, required: false },
-    texto_hero_dos: { type: String, required: false },
-    texto_hero_destacado: { type: String, required: false },
-    descripcion_hero: { type: String, required: false },
+    // 🎯 INTERNACIONALIZADO: 
+    texto_hero_uno: {
+        es: { type: String, required: true }, // "Con papas fritas y aderezo de la casa"
+        en: { type: String, default: '' }     // "With french fries and house dressing"
+    },
+    texto_hero_dos: {
+        es: { type: String, required: true }, // "Con papas fritas y aderezo de la casa"
+        en: { type: String, default: '' }     // "With french fries and house dressing"
+    },
+    texto_hero_destacado: {
+        es: { type: String, required: true }, // "Con papas fritas y aderezo de la casa"
+        en: { type: String, default: '' }     // "With french fries and house dressing"
+    },
+    descripcion_hero: {
+        es: { type: String, required: true }, // "Con papas fritas y aderezo de la casa"
+        en: { type: String, default: '' }     // "With french fries and house dressing"
+    },
+    
     color_primario: { type: String, required: false, default: '#e74c3c' }, 
     color_fondo: { type: String, required: false },
     theme: { type: String, default: 'classic' },

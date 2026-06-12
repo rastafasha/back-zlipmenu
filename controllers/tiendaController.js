@@ -3,6 +3,7 @@ const Tienda = require('../models/tienda');
 const Producto = require('../models/producto');
 const User = require('../models/usuario');
 const Categoria = require('../models/categoria');
+const translate = require('google-translate-api-x');
 
 const getTiendas = async(req, res) => {
 
@@ -50,106 +51,127 @@ const getTienda = async(req, res) => {
 
 };
 
-const crearTienda = async(req, res) => {
-
-    const uid = req.uid;
-     // Convertir el nombre en slug
-    const nombre = req.body.nombre || '';
-    const slug = nombre.toLowerCase()
-        .trim()
-        .replace(/[\s]+/g, '-') // reemplaza espacios por guiones
-        .replace(/[^\w\-]+/g, '') // elimina caracteres no alfanuméricos excepto guiones
-        .replace(/\-\-+/g, '-') // reemplaza guiones múltiples por uno solo
-        // reemplaza acentos y caracteres especiales
-                .replace(/á/g, 'a')
-                .replace(/é/g, 'e')
-                .replace(/í/g, 'i')
-                .replace(/ó/g, 'o')
-                .replace(/ú/g, 'u')
-                .replace(/ñ/g, 'n')
-                .replace(/ü/g, 'u');
-
-    const tienda = new Tienda({
-        usuario: uid,
-        ...req.body,
-        slug: slug
-    });
-
+const crearTienda = async (req, res) => {
     try {
+        const uid = req.uid;
+        let data = req.body;
+
+        // [Tu lógica nativa exacta del slug se mantiene aquí...]
+        const nombre = data.nombre || '';
+        const slug = nombre.toLowerCase().trim().replace(/[\s]+/g, '-').replace(/[^\w\-]+/g, '').replace(/\-\-+/g, '-').replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o').replace(/ú/g, 'u').replace(/ñ/g, 'n').replace(/ü/g, 'u');
+
+        // 🔥 FUNCIÓN TRADUCTORA AUTOMÁTICA EN TIEMPO REAL
+        const traducirCampoI18n = async (campoNuevo) => {
+            let esText = '';
+            let enText = '';
+
+            if (campoNuevo && typeof campoNuevo === 'object') {
+                esText = (campoNuevo.es || '').trim();
+                enText = (campoNuevo.en || '').trim();
+            } else if (campoNuevo && typeof campoNuevo === 'string') {
+                esText = campoNuevo.trim();
+            }
+
+            // Si hay texto en español pero el inglés vino vacío, lo traducimos al vuelo
+            if (esText && !enText) {
+                try {
+                    const resTraduccion = await translate(esText, { from: 'es', to: 'en' });
+                    enText = (resTraduccion && resTraduccion.text) ? resTraduccion.text : '';
+                } catch (errTranslate) {
+                    console.error(`⚠️ Falló Google Translate para "${esText}":`, errTranslate.message);
+                }
+            }
+
+            return { es: esText, en: enText };
+        };
+
+        const tienda = new Tienda({
+            usuario: uid,
+            ...data,
+            slug: slug,
+            // 🚀 Traducimos de forma asíncrona cada sección del Hero
+            texto_hero_uno: await traducirCampoI18n(data.texto_hero_uno),
+            texto_hero_dos: await traducirCampoI18n(data.texto_hero_dos),
+            texto_hero_destacado: await traducirCampoI18n(data.texto_hero_destacado),
+            descripcion_hero: await traducirCampoI18n(data.descripcion_hero)
+        });
 
         const tiendaDB = await tienda.save();
-
-        res.json({
-            ok: true,
-            tienda: tiendaDB
-        });
+        res.json({ ok: true, tienda: tiendaDB });
 
     } catch (error) {
-        console.log(error);
-        res.status(500).json({
-            ok: false,
-            msg: 'Hable con el admin'
-        });
+        console.error('Error crítico al crear tienda:', error);
+        res.status(500).json({ ok: false, msg: 'Error interno en el servidor.', error: error.message });
     }
-
-
 };
 
-const actualizarTienda = async(req, res) => {
-
+const actualizarTienda = async (req, res) => {
     const id = req.params.id;
     const uid = req.uid;
+    let data = req.body;
 
     try {
-
         const tienda = await Tienda.findById(id);
         if (!tienda) {
-            return res.status(500).json({
-                ok: false,
-                msg: 'Tienda no encontrado por el id'
-            });
+            return res.status(404).json({ ok: false, msg: 'Tienda no encontrada por el id' });
         }
+
+        // 🔥 FUSIÓN + TRADUCCIÓN INTELIGENTE AL ACTUALIZAR
+        const fusionarYTraducirI18n = async (campoNuevo, campoBaseDatos) => {
+            let esText = '';
+            let enText = '';
+
+            if (campoNuevo && typeof campoNuevo === 'object') {
+                esText = campoNuevo.es !== undefined ? campoNuevo.es.trim() : (campoBaseDatos?.es || '');
+                enText = campoNuevo.en !== undefined ? campoNuevo.en.trim() : (campoBaseDatos?.en || '');
+            } else if (campoNuevo && typeof campoNuevo === 'string') {
+                esText = campoNuevo.trim();
+                enText = campoBaseDatos?.en || ''; // Tomamos el inglés de la BD temporalmente
+            } else {
+                return campoBaseDatos || { es: '', en: '' };
+            }
+
+            // DETECTAMOS SI EL ESPAÑOL CAMBIÓ: Si el texto actual en español es diferente al que estaba en BD,
+            // significa que el usuario lo editó, por lo que el inglés viejo ya no sirve y hay que re-traducir.
+            const esDiferente = campoBaseDatos?.es !== esText;
+            
+            if (esText && (esDiferente || !enText)) {
+                try {
+                    console.log(`🌐 Re-traduciendo cambio en Hero: "${esText}"`);
+                    const resTraduccion = await translate(esText, { from: 'es', to: 'en' });
+                    enText = (resTraduccion && resTraduccion.text) ? resTraduccion.text : '';
+                } catch (errTranslate) {
+                    console.error('⚠️ Error al re-traducir campo:', errTranslate.message);
+                }
+            }
+
+            return { es: esText, en: enText };
+        };
 
         const cambiosTienda = {
-            ...req.body,
-            usuario: uid
-        }
+            ...data,
+            usuario: uid,
+            // 🚀 Evaluamos y re-traducimos dinámicamente si el administrador editó el texto
+            texto_hero_uno: await fusionarYTraducirI18n(data.texto_hero_uno, tienda.texto_hero_uno),
+            texto_hero_dos: await fusionarYTraducirI18n(data.texto_hero_dos, tienda.texto_hero_dos),
+            texto_hero_destacado: await fusionarYTraducirI18n(data.texto_hero_destacado, tienda.texto_hero_destacado),
+            descripcion_hero: await fusionarYTraducirI18n(data.descripcion_hero, tienda.descripcion_hero)
+        };
 
-        // Si viene el nombre actualizado, actualizar el slug
-        if (req.body.nombre) {
-            const nombre = req.body.nombre;
-            const slug = nombre.toLowerCase()
-                .trim()
-                .replace(/[\s]+/g, '-') // reemplaza espacios por guiones
-                .replace(/[^\w\-]+/g, '') // elimina caracteres no alfanuméricos excepto guiones
-                .replace(/\-\-+/g, '-') // reemplaza guiones múltiples por uno solo
-                // reemplaza acentos y caracteres especiales
-                .replace(/á/g, 'a')
-                .replace(/é/g, 'e')
-                .replace(/í/g, 'i')
-                .replace(/ó/g, 'o')
-                .replace(/ú/g, 'u')
-                .replace(/ñ/g, 'n')
-                .replace(/ü/g, 'u');
+        if (data.nombre) {
+            // [Tu lógica nativa exacta del slug se mantiene aquí...]
+            const nombre = data.nombre;
+            const slug = nombre.toLowerCase().trim().replace(/[\s]+/g, '-').replace(/[^\w\-]+/g, '').replace(/\-\-+/g, '-').replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o').replace(/ú/g, 'u').replace(/ñ/g, 'n').replace(/ü/g, 'u');
             cambiosTienda.slug = slug;
         }
 
         const tiendaActualizado = await Tienda.findByIdAndUpdate(id, cambiosTienda, { new: true });
-
-        res.json({
-            ok: true,
-            tiendaActualizado
-        });
+        res.json({ ok: true, tiendaActualizado });
 
     } catch (error) {
-        console.log(error)
-        res.status(500).json({
-            ok: false,
-            msg: 'Error hable con el admin'
-        });
+        console.error('Error al actualizar la tienda:', error);
+        res.status(500).json({ ok: false, msg: 'Error interno en el servidor.', error: error.message });
     }
-
-
 };
 
 const borrarTienda = async(req, res) => {

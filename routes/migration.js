@@ -6,6 +6,7 @@ const translate = require('google-translate-api-x');
 const Producto = require('../models/producto');
 const Categoria = require('../models/categoria');
 const Selector = require('../models/selector');
+const Tienda = require('../models/tienda');
 
 // 🚀 ENDPOINT DE MIGRACIÓN ÚNICA
 // Ejecutar una sola vez en producción para internacionalizar la data existente
@@ -28,7 +29,7 @@ router.post('/migrar-base-datos-i18n', async (req, res) => {
         console.log("Estructura de un Selector:", JSON.stringify(pruebaSelector, null, 2));
         console.log("===========================================");
 
-                // ==========================================
+        // ==========================================
         // 1. 📂 MIGRACIÓN DE CATEGORÍAS (Cambio a subcategoria singular + i18n)
         // ==========================================
         // Buscamos categorías usando el campo viejo "nombre" o verificando que no se haya migrado aún
@@ -48,7 +49,7 @@ router.post('/migrar-base-datos-i18n', async (req, res) => {
                 }
 
                 console.log(`Traduciendo Categoría: "${nombreBase}" y Subcategoría: "${subcatBase}"...`);
-                
+
                 // 2. Traducimos el Nombre de la Categoría
                 const resTranslation = await translate(nombreBase, { from: 'es', to: 'en' });
                 const nombreEn = (resTranslation && resTranslation.text) ? resTranslation.text : "";
@@ -63,8 +64,8 @@ router.post('/migrar-base-datos-i18n', async (req, res) => {
                 // 4. Actualizamos la BD: Guardamos lo nuevo bilingüe ($set) y borramos lo viejo en plural ($unset)
                 await Categoria.updateOne(
                     { _id: categoria._id },
-                    { 
-                        $set: { 
+                    {
+                        $set: {
                             nombre: { es: nombreBase, en: nombreEn },
                             subcategoria: { es: subcatBase, en: subcatEn } // Nuevo campo singular bilingüe
                         },
@@ -73,7 +74,7 @@ router.post('/migrar-base-datos-i18n', async (req, res) => {
                         }
                     }
                 );
-                
+
                 categoriasMigradas++;
                 await new Promise(resolve => setTimeout(resolve, 350)); // Anti-ban
             } catch (error) {
@@ -88,8 +89,8 @@ router.post('/migrar-base-datos-i18n', async (req, res) => {
                     // Escudo: Si falla internet, guardamos lo que tenemos en español y limpiamos el plural
                     await Categoria.updateOne(
                         { _id: categoria._id },
-                        { 
-                            $set: { 
+                        {
+                            $set: {
                                 nombre: { es: categoria.nombre || "", en: "" },
                                 subcategoria: { es: categoria.subcategorias || "", en: "" }
                             },
@@ -226,6 +227,95 @@ router.post('/migrar-base-datos-i18n', async (req, res) => {
         console.log("=== Migración de selectores finalizada ===");
 
         // ==========================================
+        // 4. 🏪 MIGRACIÓN DE TEXTOS HERO DE TIENDAS (NUEVO)
+        // ==========================================
+        // Buscamos las tiendas que aún tengan el primer campo del hero como string plano viejo
+        const tiendasAntiguas = await Tienda.find({ "texto_hero_uno.es": { $exists: false } }).lean();
+        console.log(`Se encontraron ${tiendasAntiguas.length} tiendas antiguas para migrar textos del Hero.`);
+
+        let tiendasMigradas = 0;
+
+        for (let tienda of tiendasAntiguas) {
+            try {
+                // 1. Capturamos y limpiamos los textos planos viejos
+                const heroUnoBase = (tienda.texto_hero_uno && typeof tienda.texto_hero_uno === 'string') ? tienda.texto_hero_uno.trim() : '';
+                const heroDosBase = (tienda.texto_hero_dos && typeof tienda.texto_hero_dos === 'string') ? tienda.texto_hero_dos.trim() : '';
+                const heroDestacadoBase = (tienda.texto_hero_destacado && typeof tienda.texto_hero_destacado === 'string') ? tienda.texto_hero_destacado.trim() : '';
+                const descHeroBase = (tienda.descripcion_hero && typeof tienda.descripcion_hero === 'string') ? tienda.descripcion_hero.trim() : '';
+
+                console.log(`Traduciendo Hero de la tienda: "${tienda.nombre || tienda._id}"...`);
+
+                // 2. Traducimos cada uno de los campos en caliente
+                let heroUnoEn = '';
+                if (heroUnoBase) {
+                    const res1 = await translate(heroUnoBase, { from: 'es', to: 'en' });
+                    heroUnoEn = (res1 && res1.text) ? res1.text : '';
+                }
+
+                let heroDosEn = '';
+                if (heroDosBase) {
+                    const res2 = await translate(heroDosBase, { from: 'es', to: 'en' });
+                    heroDosEn = (res2 && res2.text) ? res2.text : '';
+                }
+
+                let heroDestacadoEn = '';
+                if (heroDestacadoBase) {
+                    const res3 = await translate(heroDestacadoBase, { from: 'es', to: 'en' });
+                    heroDestacadoEn = (res3 && res3.text) ? res3.text : '';
+                }
+
+                let descHeroEn = '';
+                if (descHeroBase) {
+                    const res4 = await translate(descHeroBase, { from: 'es', to: 'en' });
+                    descHeroEn = (res4 && res4.text) ? res4.text : '';
+                }
+
+                // 3. Impactamos los cambios estructurados en la Base de Datos
+                await Tienda.updateOne(
+                    { _id: tienda._id },
+                    {
+                        $set: {
+                            texto_hero_uno: { es: heroUnoBase, en: heroUnoEn },
+                            texto_hero_dos: { es: heroDosBase, en: heroDosEn },
+                            texto_hero_destacado: { es: heroDestacadoBase, en: heroDestacadoEn },
+                            descripcion_hero: { es: descHeroBase, en: descHeroEn }
+                        }
+                    }
+                );
+
+                tiendasMigradas++;
+                await new Promise(resolve => setTimeout(resolve, 350)); // Anti-ban de Google
+            } catch (errorTienda) {
+                console.error(`❌ Falló tienda ID ${tienda._id}:`, errorTienda.message);
+
+                if (errorTienda.message.includes('MongooseServerSelectionError') || errorTienda.name === 'MongooseServerSelectionError') {
+                    console.error("🚨 Base de datos desconectada. Deteniendo migración de tiendas.");
+                    break;
+                }
+
+                // Escudo protector: Si falla internet, guardamos lo que tenemos en español
+                try {
+                    await Tienda.updateOne(
+                        { _id: tienda._id },
+                        {
+                            $set: {
+                                texto_hero_uno: { es: tienda.texto_hero_uno || '', en: '' },
+                                texto_hero_dos: { es: tienda.texto_hero_dos || '', en: '' },
+                                texto_hero_destacado: { es: tienda.texto_hero_destacado || '', en: '' },
+                                descripcion_hero: { es: tienda.descripcion_hero || '', en: '' }
+                            }
+                        }
+                    );
+                    tiendasMigradas++;
+                } catch (dbErr) {
+                    console.error("No se pudo guardar la tienda de respaldo por desconexión de BD.");
+                    break;
+                }
+            }
+        }
+        console.log("=== Migración de textos Hero de tiendas finalizada ===");
+
+        // ==========================================
         // RESPUESTA EXITOSA DE LA MIGRACIÓN TOTAL
         // ==========================================
         res.json({
@@ -234,7 +324,8 @@ router.post('/migrar-base-datos-i18n', async (req, res) => {
             reporte: {
                 categorias_actualizadas: categoriasMigradas,
                 productos_actualizados: productosMigrados,
-                selectores_actualizados: selectoresMigrados // Incluido en respuesta
+                selectores_actualizados: selectoresMigrados, // Incluido en respuesta
+                tiendas_migradas: tiendasMigradas,
             }
         });
 
