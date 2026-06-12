@@ -6,6 +6,7 @@ const Selector = require('../models/selector');
 const Color = require('../models/color');
 const fs = require('fs');
 const { randomInt } = require('crypto');
+const translate = require('google-translate-api-x');
 const path = require('path');
 
 // Internal function to reduce stock programmatically
@@ -238,7 +239,6 @@ const getProductosTiendaIdActive = async(req, res) => {
     });
 };
 
-
 const crearProducto = async(req, res) => {
     const uid = req.uid;
     const titulo = req.body.titulo || '';
@@ -252,14 +252,13 @@ const crearProducto = async(req, res) => {
         .normalize('NFD') // Descompone caracteres acentuados
         .replace(/[\u0300-\u036f]/g, '') // Elimina los símbolos de acentos sueltos
         .replace(/[\s]+/g, '-') // Espacios a guiones
-        .replace(/[^\w\-]+/g, '') // Limpia caracteres especiales restantes [5]
-        .replace(/\-\-+/g, '-'); // Reduce guiones múltiples a uno solo [5]
+        .replace(/[^\w\-]+/g, '') // Limpia caracteres especiales restantes
+        .replace(/\-\-+/g, '-'); // Reduce guiones múltiples a uno solo
 
     try {
         // 2. Validación de unicidad inteligente (Multi-Tenant)
-        // Permite que "Tienda A" y "Tienda B" tengan una "margherita", 
-        // pero evita que la misma tienda duplique el mismo plato.
         if (idLocal) {
+            // Buscamos coincidencia en el campo slug (que sigue siendo un String plano)
             const existeProductoEnLocal = await Producto.findOne({ slug, local: idLocal });
             if (existeProductoEnLocal) {
                 return res.status(400).json({
@@ -269,11 +268,36 @@ const crearProducto = async(req, res) => {
             }
         }
 
-        // 3. Crear la instancia con el slug limpio
+        // 🚀 LA MAGIA: Traducimos en paralelo de Español a Inglés usando Promise.all
+        // Extraemos los textos crudos del body; si vienen vacíos, les ponemos un string limpio
+        const textoShort = req.body.info_short || '';
+        const textoDetalle = req.body.detalle || '';
+
+        const [traducirTitulo, traducirInfoShort, traducirDetalle] = await Promise.all([
+            translate(titulo, { from: 'es', to: 'en' }),
+            translate(textoShort, { from: 'es', to: 'en' }),
+            translate(textoDetalle, { from: 'es', to: 'en' })
+        ]);
+
+        // 3. Crear la instancia adaptada al nuevo esquema bilingüe de MongoDB
         const producto = new Producto({
+            ...req.body, // Trae el resto de campos (precios, stock, categoria, local, etc.)
             usuario: uid,
-            ...req.body,
-            slug: slug // Asegura pisar cualquier slug corrupto enviado en el body
+            slug: slug, // Asegura pisar cualquier slug corrupto
+            
+            // Reestructuramos las propiedades de texto plano a sub-objetos { es, en }
+            titulo: {
+                es: titulo,
+                en: traducirTitulo.text // Guardado automático en inglés por IA
+            },
+            info_short: {
+                es: textoShort,
+                en: traducirInfoShort.text // Guardado automático en inglés por IA
+            },
+            detalle: {
+                es: textoDetalle,
+                en: traducirDetalle.text // Guardado automático en inglés por IA
+            }
         });
 
         const productoDB = await producto.save();
@@ -292,7 +316,6 @@ const crearProducto = async(req, res) => {
         });
     }
 };
-
 const actualizarProducto = async(req, res) => {
     const id = req.params.id;
     const uid = req.uid;
@@ -301,38 +324,40 @@ const actualizarProducto = async(req, res) => {
         // 1. Verificar si el producto existe
         const producto = await Producto.findById(id);
         if (!producto) {
-            return res.status(404).json({ // Cambiado semánticamente a 404 (Not Found)
+            return res.status(404).json({
                 ok: false,
                 msg: 'Producto no encontrado por el id'
             });
         }
 
+        // Creamos el objeto base de cambios
         const cambiosProducto = {
             ...req.body,
             usuario: uid
-        }
+        };
 
-        // 2. Si viene el título modificado, recalcular el slug de forma segura
+        // 🚀 LA MAGIA: Traducir de forma reactiva y condicional sólo lo que cambie
+        // Evaluamos campo por campo si el Administrador de Angular está enviando una actualización de texto
+        
+        // A) Si el dueño actualizó el TÍTULO:
         if (req.body.titulo) {
             const slug = req.body.titulo
                 .toLowerCase()
                 .trim()
-                .replace(/ñ/g, 'n') // Reemplaza la eñe primero
-                .normalize('NFD') // Descompone caracteres con acentos
-                .replace(/[\u0300-\u036f]/g, '') // Remueve acentos sueltos
-                .replace(/[\s]+/g, '-') // Espacios a guiones
-                .replace(/[^\w\-]+/g, '') // Limpia caracteres especiales restantes
-                .replace(/\-\-+/g, '-'); // Reduce guiones repetidos
+                .replace(/ñ/g, 'n')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[\s]+/g, '-')
+                .replace(/[^\w\-]+/g, '')
+                .replace(/\-\-+/g, '-');
 
-            // 3. Validación Multi-Tenant: El slug debe ser único dentro del mismo local
-            // Usamos el ID del local que viene en el body, o el que ya tenía el producto guardado
             const idLocal = req.body.local || producto.local;
 
             if (idLocal) {
                 const existeProductoEnLocal = await Producto.findOne({ 
                     slug, 
                     local: idLocal,
-                    _id: { $ne: id } // Excluye el producto actual para evitar falsos positivos
+                    _id: { $ne: id }
                 });
 
                 if (existeProductoEnLocal) {
@@ -343,10 +368,36 @@ const actualizarProducto = async(req, res) => {
                 }
             }
 
+            // Traducimos el nuevo título al inglés
+            const traducirTitulo = await translate(req.body.titulo, { from: 'es', to: 'en' });
+            
+            // Empaquetamos la propiedad bilingüe en el objeto de cambios
+            cambiosProducto.titulo = {
+                es: req.body.titulo,
+                en: traducirTitulo.text
+            };
             cambiosProducto.slug = slug;
         }
 
-        // 4. Ejecutar la actualización en MongoDB Atlas
+        // B) Si el dueño actualizó la DESCRIPCIÓN CORTA (info_short):
+        if (req.body.info_short) {
+            const traducirShort = await translate(req.body.info_short, { from: 'es', to: 'en' });
+            cambiosProducto.info_short = {
+                es: req.body.info_short,
+                en: traducirShort.text
+            };
+        }
+
+        // C) Si el dueño actualizó el DETALLE:
+        if (req.body.detalle) {
+            const traducirDetalle = await translate(req.body.detalle, { from: 'es', to: 'en' });
+            cambiosProducto.detalle = {
+                es: req.body.detalle,
+                en: traducirDetalle.text
+            };
+        }
+
+        // 4. Ejecutar la actualización en MongoDB Atlas con los objetos { es, en } procesados
         const productoActualizado = await Producto.findByIdAndUpdate(id, cambiosProducto, { new: true });
 
         res.json({
@@ -355,7 +406,7 @@ const actualizarProducto = async(req, res) => {
         });
 
     } catch (error) {
-        console.error('Error al actualizar producto:', error); // Logs listos para producción en Render
+        console.error('Error al actualizar producto:', error);
         res.status(500).json({
             ok: false,
             msg: 'Error hable con el admin',

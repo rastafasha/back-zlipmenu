@@ -148,6 +148,9 @@ const startServer = async () => {
     app.use('/api/notificaciones', require('./routes/notificaciones'));
     app.use('/api/notipush', require('./routes/notipush'));
 
+    app.use('/api/migration', require('./routes/migration'));
+    app.use('/api/tasas', require('./routes/tasas'));
+
     //notification
     const vapidKeys = {
         "publicKey": process.env.VAPI_KEY_PUBLIC,
@@ -155,7 +158,7 @@ const startServer = async () => {
     };
 
     webpush.setVapidDetails(
-        'mailto:example@youremail.com',
+        'mailto:mercadocreativo@gmail.com',
         vapidKeys.publicKey,
         vapidKeys.privateKey,
     );

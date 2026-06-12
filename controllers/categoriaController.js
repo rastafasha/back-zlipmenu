@@ -1,6 +1,7 @@
 const { response } = require('express');
 const Categoria = require('../models/categoria');
 const Producto = require('../models/producto');
+const translate = require('google-translate-api-x');
 const mongoose = require('mongoose');
 
 
@@ -110,11 +111,20 @@ const crearCategoria = async(req, res) => {
             });
         }
 
-        // 3. Crear la instancia con el slug limpio y el usuario que la crea
+        // 🚀 LA MAGIA: Traducimos automáticamente el nombre de la sección al inglés
+        const traduccionNombre = await translate(nombre, { from: 'es', to: 'en' });
+
+        // 3. Crear la instancia con el slug limpio y la estructura bilingüe { es, en }
         const categoria = new Categoria({
-            usuario: uid, // Mantiene la referencia de quién la creó (si lo necesitas)
-            ...req.body,
-            slug: slug
+            ...req.body, // Hereda icono, img, local, productos, etc.
+            usuario: uid, 
+            slug: slug,
+            
+            // Reestructuramos el campo nombre para cumplir con el esquema bilingüe de MongoDB
+            nombre: {
+                es: nombre,
+                en: traduccionNombre.text // Guardado automático en inglés (Ej: "Bebidas" -> "Drinks")
+            }
         });
 
         const categoriaDB = await categoria.save();
@@ -125,10 +135,11 @@ const crearCategoria = async(req, res) => {
         });
 
     } catch (error) {
-        console.error(error); // Ideal para debuggear en Vercel/Render
+        console.error('Error al crear categoría:', error); // Ideal para debuggear en Vercel/Render
         res.status(500).json({
             ok: false,
-            msg: 'Error interno, hable con el admin'
+            msg: 'Error interno, hable con el admin',
+            error: error.message
         });
     }
 };
@@ -143,30 +154,31 @@ const actualizarCategoria = async(req, res) => {
         // 1. Verificar existencia del recurso
         const categoria = await Categoria.findById(id);
         if (!categoria) {
-            return res.status(404).json({ // Cambiado semánticamente a 404
+            return res.status(404).json({
                 ok: false,
                 msg: 'Categoría no encontrada por el id'
             });
         }
 
+        // Creamos el objeto base de cambios
         const cambiosCategoria = {
             ...req.body,
             usuario: uid
-        }
+        };
 
-        // 2. Si viene el nombre modificado, recalcular el slug de forma segura
+        // 🚀 LA MAGIA: Traducir de forma reactiva y condicional sólo si cambia el nombre
         if (req.body.nombre) {
             const slug = req.body.nombre
                 .toLowerCase()
                 .trim()
-                .replace(/ñ/g, 'n') // Reemplaza la eñe primero
-                .normalize('NFD') // Descompone caracteres con acentos
-                .replace(/[\u0300-\u036f]/g, '') // Remueve los acentos sueltos
-                .replace(/[\s]+/g, '-') // Espacios a guiones
-                .replace(/[^\w\-]+/g, '') // Limpia caracteres especiales restantes
-                .replace(/\-\-+/g, '-'); // Reduce guiones repetidos
+                .replace(/ñ/g, 'n')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[\s]+/g, '-')
+                .replace(/[^\w\-]+/g, '')
+                .replace(/\-\-+/g, '-');
 
-            // 3. Validación de duplicados: Asegurar que nadie más use este slug
+            // Aseguramos la validación de duplicados con el slug plano
             const existeSlug = await Categoria.findOne({ slug, _id: { $ne: id } });
             if (existeSlug) {
                 return res.status(400).json({
@@ -175,6 +187,14 @@ const actualizarCategoria = async(req, res) => {
                 });
             }
 
+            // Llamamos al traductor automático en microsegundos
+            const traduccionNombre = await translate(req.body.nombre, { from: 'es', to: 'en' });
+
+            // Empaquetamos la nueva propiedad bilingüe en el objeto de cambios
+            cambiosCategoria.nombre = {
+                es: req.body.nombre,
+                en: traduccionNombre.text
+            };
             cambiosCategoria.slug = slug;
         }
 
@@ -187,10 +207,11 @@ const actualizarCategoria = async(req, res) => {
         });
 
     } catch (error) {
-        console.error(error); // Permite registrar el error real para debugging en Render
+        console.error('Error al actualizar categoría:', error); // Logs listos para producción en Render
         res.status(500).json({
             ok: false,
-            msg: 'Error hable con el admin'
+            msg: 'Error hable con el admin',
+            error: error.message
         });
     }
 };

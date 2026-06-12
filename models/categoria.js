@@ -2,9 +2,14 @@ var mongoose = require('mongoose');
 var Schema = mongoose.Schema;
 
 var CategoriaSchema = Schema({
-    nombre: { type: String, required: true },
+    // 🎯 INTERNACIONALIZADO: El nombre de la sección ahora es bilingüe
+    nombre: {
+        es: { type: String, required: true }, // "Pizzas", "Entradas"
+        en: { type: String, default: '' }     // "Pizzas", "Appetizers"
+    },
     icono: { type: String, required: true },
     subcategorias: { type: String, required: false },
+    // El slug se queda plano para conservar tus rutas amigables en las búsquedas
     slug: { type: String, required: true, unique: false },
     img: { type: String },
     state_banner: { type: Boolean },
