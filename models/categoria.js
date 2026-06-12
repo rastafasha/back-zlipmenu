@@ -8,13 +8,16 @@ var CategoriaSchema = Schema({
         en: { type: String, default: '' }     // "Pizzas", "Appetizers"
     },
     icono: { type: String, required: true },
-    subcategorias: { type: String, required: false },
+    subcategoria: {
+        es: { type: String, required: false },
+        en: { type: String, required: false }
+    },
     // El slug se queda plano para conservar tus rutas amigables en las búsquedas
     slug: { type: String, required: true, unique: false },
     img: { type: String },
     state_banner: { type: Boolean },
     status: { type: String, required: false, default: 'Desactivado' },
-    local: { type: Schema.ObjectId, ref: 'tienda', required: true }, 
+    local: { type: Schema.ObjectId, ref: 'tienda', required: true },
     productos: { type: Schema.ObjectId, ref: 'producto' },
     createdAt: { type: Date, default: Date.now, required: true },
     updatedAt: { type: Date }

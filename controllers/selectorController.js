@@ -1,5 +1,6 @@
 const { response } = require('express');
 const Selector = require('../models/selector');
+const translate = require('google-translate-api-x');
 
 const getSelectors = async(req, res) => {
 
@@ -43,28 +44,40 @@ const getSelector = async(req, res) => {
 
 };
 
-const crearSelector = async(req, res) => {
+const crearSelector = async (req, res) => {
+    try {
+        let data = req.body;
 
-    let data = req.body;
-
-    var selector = new Selector;
-    selector.titulo = data.titulo;
-    selector.producto = data.producto;
-    selector.save((err, selector_data) => {
-        if (!err) {
-            if (selector_data) {
-                res.status(200).send({ selector: selector_data });
-            } else {
-                res.status(500).send({ error: err });
-            }
-        } else {
-            res.status(500).send({ error: err });
+        // Validamos que venga el título en el request
+        if (!data.titulo) {
+            return res.status(400).send({ 
+                error: 'El campo título es requerido para crear el selector.' 
+            });
         }
-    });
 
+        var selector = new Selector();
+        
+        // Mapeamos el string plano a la estructura bilingüe { es, en }
+        // Guardamos el original en 'es' y dejamos 'en' listo (vacío o puedes traducirlo en caliente)
+        selector.titulo = {
+            es: data.titulo.trim(),
+            en: "" // Se traducirá después, o puedes llamar a translate aquí si lo deseas
+        };
+        
+        selector.producto = data.producto;
+        selector.estado = data.estado || "activo"; // Añadido por buena práctica si viene en el body
 
+        // Guardado moderno usando promesas / async-await
+        const selector_data = await selector.save();
 
+        res.status(200).send({ selector: selector_data });
+
+    } catch (err) {
+        console.error('Error al crear el selector:', err);
+        res.status(500).send({ error: err.message || err });
+    }
 };
+
 
 const actualizarSelector = async(req, res) => {
 
