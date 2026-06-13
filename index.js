@@ -5,6 +5,7 @@ const { dbConnection } = require('./database/config');
 const cors = require('cors');
 const path = require('path');
 const socketIO = require('socket.io');
+
 require('./config/recordatorios-cron');
 
 // Check if we're running on a serverless platform
@@ -90,6 +91,7 @@ const startServer = async () => {
 
     //directiorio publico de pruebas de google
     app.use(express.static('public'));
+
 
     //rutas
     app.use('/api/usuarios', require('./routes/usuarios'));
@@ -216,7 +218,6 @@ if (process.env.VERCEL !== '1') {
 if (typeof serverless !== 'undefined' && serverless) {
     module.exports.handler = serverless(app);
 }
-
 // Export app for testing and other uses
 module.exports = { app, server, io };
 

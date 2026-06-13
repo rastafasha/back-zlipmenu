@@ -213,7 +213,7 @@ const getProductosTiendaIdActive = async(req, res) => {
         local: id, 
         status: 'Activo' // Si es un solo estado, pásalo como String. Si son varios usa: { $in: ['Activo'] }
     })
-    .populate('local', 'nombre slug categorias subcategoria')
+    .populate('local', 'nombre slug categorias subcategorias')
     .populate('selector') // Ahora sí se mostrará porque no está bloqueado por la proyección
     .populate('categoria')
     .sort({ createdAt: -1 })

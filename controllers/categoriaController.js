@@ -431,8 +431,6 @@ const getCategoriasByLocal = async (req, res) => {
     const { localId } = req.params;
 
     try {
-        
-
         // 🟢 1. Forzamos la conversión nativa a ObjectId
         const localObjectId = new mongoose.Types.ObjectId(localId);
 

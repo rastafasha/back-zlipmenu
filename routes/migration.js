@@ -67,10 +67,7 @@ router.post('/migrar-base-datos-i18n', async (req, res) => {
                     {
                         $set: {
                             nombre: { es: nombreBase, en: nombreEn },
-                            subcategoria: { es: subcatBase, en: subcatEn } // Nuevo campo singular bilingüe
-                        },
-                        $unset: {
-                            subcategorias: "" // 🔥 Eliminamos el campo viejo en plural de la base de datos
+                            subcategorias: { es: subcatBase, en: subcatEn } // Nuevo campo singular bilingüe
                         }
                     }
                 );

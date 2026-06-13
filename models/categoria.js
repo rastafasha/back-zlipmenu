@@ -8,7 +8,7 @@ var CategoriaSchema = Schema({
         en: { type: String, default: '' }     // "Pizzas", "Appetizers"
     },
     icono: { type: String, required: true },
-    subcategoria: {
+    subcategorias: {
         es: { type: String, required: false },
         en: { type: String, required: false }
     },

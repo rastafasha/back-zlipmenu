@@ -9,6 +9,9 @@ const { sendNotification } = require('../helpers/notificaciones');
 const { io } = require('../index');
 const ProductoController = require('./productoController');
 
+const { enviarFacturaWhatsApp } = require('../helpers/whatsapp-helper'); // Si usas whatsapp-web.js
+
+
 // importamos nodemailer, agregado por José Prados
 const nodemailer = require('nodemailer');
 // confirguramos el tarnsporter de nodemailer
@@ -726,52 +729,59 @@ function denegar(req, res) {
 }
 
 
-// enviar factura al cliente, agregado por José Prados
+// enviar factura al cliente, 
 function enviarFactura(req, res) {
-    // Verifica que se recibió el archivo
     if (!req.file) {
-        return res.status(400).json({
-            ok: false,
-            message: 'No se recibió ningún archivo'
-        });
+        return res.status(400).json({ ok: false, message: 'No se recibió ningún archivo' });
     }
 
-    // Configurar el correo con el archivo recibido
-    const texto = `Hola ${req.body.nombrecliente}! Adjunto encontraras la factura de tu compra.`;
-    const mailOptions = {
-        from: `"Soporte ZlipMenu" <${process.env.USER_EMAIL}>`,
-        to: req.body.emailcliente,
-        subject: `¡Hola ${req.body.nombrecliente}! Te enviamos la factura de tu compra`,
-        text: texto,
-        attachments: [
-            {
-                filename: req.file.originalname,
-                content: req.file.buffer,
-            },
-        ],
-    };
+    const nombreCliente = req.body.nombrecliente || 'Cliente';
+    const emailCliente = req.body.emailcliente;
+    const telefonoCliente = req.body.telefono; 
+    const nombreRestaurante = req.body.nombrerestaurante || 'nuestro restaurante';
+    
+    // IMPORTANTE: Asegúrate de enviar 'idtienda' en el FormData desde Angular
+    const restauranteId = req.body.idtienda; 
 
-    // enviar email
-    transporter.sendMail(mailOptions, (error, info) => {
-        if (error) {
-            console.error('Error al enviar el correo:', error);
-            res.status(500).json({
-                ok: false,
-                message: 'Error al enviar el correo, verifique el email del cliente por favor'
-            });
-        }
-        else {
-            console.log('Correo enviado: ' + info.response);
-            res.json({
-                ok: true,
-                message: 'Correo enviado con éxito'
-            });
-        }
-    })
+    // ==========================================
+    // CANAL 1: ENVIAR POR EMAIL (Si existe)
+    // ==========================================
+    // if (emailCliente && emailCliente.trim() !== '') {
+    //     const mailOptions = {
+    //         from: `"Soporte ZlipMenu" <${process.env.USER_EMAIL}>`,
+    //         to: emailCliente,
+    //         subject: `¡Hola ${nombreCliente}! Te enviamos la factura de tu compra`,
+    //         text: `Hola ${nombreCliente}! Adjunto encontrarás la factura de tu compra en ${nombreRestaurante}.`,
+    //         attachments: [{ filename: req.file.originalname, content: req.file.buffer }],
+    //     };
+    //     transporter.sendMail(mailOptions, (err) => { if (err) console.error('Error Email:', err); });
+    // }
 
-    // enviarWhatsappSencillo()
-    // enviarSMS()
+    // ==========================================
+    // CANAL 2: WHATSAPP MULTI-TENANT AUTOMÁTICO
+    // ==========================================
+    if (restauranteId && telefonoCliente && telefonoCliente.trim() !== '') {
+        const mensajeTexto = `¡Hola ${nombreCliente}! ✨ Te escribimos de *${nombreRestaurante}*.\nAquí tienes adjunta tu factura digital generada por *Zlipmenu*.`;
+
+        // Llamamos al helper dinámico pasándole la memoria del archivo directamente
+        enviarFacturaWhatsApp(
+            restauranteId, 
+            telefonoCliente, 
+            mensajeTexto, 
+            req.file.buffer, 
+            req.file.originalname
+        );
+    } else {
+        console.log('Falta el ID del restaurante o el teléfono para procesar el WhatsApp.');
+    }
+
+    // Respuesta rápida a Angular en Vercel
+    return res.json({
+        ok: true,
+        message: 'La factura está siendo procesada por el bot del restaurante.'
+    });
 }
+
 
 //fin enviar factura
 
