@@ -40,76 +40,62 @@ router.post('/migrar-base-datos-i18n', async (req, res) => {
         // 1. 📂 MIGRACIÓN DE CATEGORÍAS (Cambio a subcategoria singular + i18n)
         // ==========================================
         // 🟢 CAMBIAMOS EL NOMBRE DE LA VARIABLE PARA EVITAR EL DUPLICADO ("listaCategoriasViejas")
-        const listaCategoriasViejas = await Categoria.find({ "nombre.es": { $exists: false } }).lean();
-        console.log(`Se encontraron ${listaCategoriasViejas.length} categorías antiguas para migrar.`);
+        // Buscamos cualquier categoría donde 'subcategorias' todavía sea un texto plano (Type 2 en MongoDB es String)
+        const listaCategoriasViejas = await Categoria.find({
+            subcategorias: { $type: "string" }
+        }).lean();
+        console.log(`Se encontraron ${listaCategoriasViejas.length} categorías con subcategorías en texto plano para reparar.`);
 
-        for (let categoria of listaCategoriasViejas) { // 🟢 Actualizado aquí también
+        for (let categoria of listaCategoriasViejas) {
             try {
-                // 1. Capturamos los campos planos antiguos
-                const nombreBase = (categoria.nombre && typeof categoria.nombre === 'string') ? categoria.nombre.trim() : '';
+                // 1. Forzamos que el nombre esté bilingüe (si ya lo está, lo dejamos igual; si no, lo preparamos)
+                let nombreBase = "";
+                if (categoria.nombre && typeof categoria.nombre === 'string') {
+                    nombreBase = categoria.nombre.trim();
+                } else if (categoria.nombre && categoria.nombre.es) {
+                    nombreBase = categoria.nombre.es.trim();
+                }
+
+                // 2. Capturamos el string plano actual de la subcategoría ("combos")
                 const subcatBase = (categoria.subcategorias && typeof categoria.subcategorias === 'string') ? categoria.subcategorias.trim() : '';
 
                 if (!nombreBase) {
-                    console.log(`⚠️ Saltando categoría ID ${categoria._id} porque el nombre está vacío.`);
+                    console.log(`⚠️ Saltando categoría ID ${categoria._id} porque no tiene un nombre válido.`);
                     continue;
                 }
 
-                console.log(`Traduciendo Categoría: "${nombreBase}" y Subcategoría: "${subcatBase}"...`);
+                console.log(`Procesando traducción para: Nombre "${nombreBase}" | Subcat: "${subcatBase}"...`);
 
-                // 2. Traducimos el Nombre de la Categoría
-                const resTranslation = await translate(nombreBase, { from: 'es', to: 'en' });
-                const nombreEn = (resTranslation && resTranslation.text) ? resTranslation.text : "";
+                // 3. Traducimos el Nombre (solo si venía en texto plano original)
+                let nombreEs = nombreBase;
+                let nombreEn = (categoria.nombre && categoria.nombre.en) ? categoria.nombre.en : "";
+                if (typeof categoria.nombre === 'string') {
+                    const resTranslation = await translate(nombreBase, { from: 'es', to: 'en' });
+                    nombreEn = (resTranslation && resTranslation.text) ? resTranslation.text : "";
+                }
 
-                // 3. Traducimos la Subcategoría vieja
+                // 4. Traducimos la Subcategoría plana al inglés
                 let subcatEn = "";
                 if (subcatBase) {
                     const resSubcat = await translate(subcatBase, { from: 'es', to: 'en' });
                     subcatEn = (resSubcat && resSubcat.text) ? resSubcat.text : "";
                 }
 
-                // 4. Actualizamos la BD: Guardamos en SINGULAR (subcategoria) y eliminamos el PLURAL viejo (subcategorias)
+                // 5. Guardamos en la base de datos con el formato de objeto correcto exigido por tu Schema
                 await Categoria.updateOne(
                     { _id: categoria._id },
                     {
                         $set: {
-                            nombre: { es: nombreBase, en: nombreEn },
-                            subcategoria: { es: subcatBase, en: subcatEn }
-                        },
-                        $unset: {
-                            subcategorias: ""
+                            nombre: { es: nombreEs, en: nombreEn },
+                            subcategorias: { es: subcatBase, en: subcatEn } // 🟢 Ahora sí se guardará como objeto {es, en}
                         }
                     }
                 );
 
                 categoriasMigradas++;
-                await new Promise(resolve => setTimeout(resolve, 350)); // Anti-ban
+                await new Promise(resolve => setTimeout(resolve, 350)); // Anti-ban del traductor
             } catch (error) {
-                console.error(`❌ Error en categoría ${categoria._id}:`, error.message);
-
-                if (error.message.includes('MongooseServerSelectionError') || error.name === 'MongooseServerSelectionError') {
-                    console.error("🚨 Base de datos desconectada. Deteniendo migración para evitar corrupción.");
-                    break;
-                }
-
-                try {
-                    const nombreFailsafe = (categoria.nombre && typeof categoria.nombre === 'string') ? categoria.nombre : "";
-                    const subcatFailsafe = (categoria.subcategorias && typeof categoria.subcategorias === 'string') ? categoria.subcategorias : "";
-
-                    await Categoria.updateOne(
-                        { _id: categoria._id },
-                        {
-                            $set: {
-                                nombre: { es: nombreFailsafe, en: "" },
-                                subcategoria: { es: subcatFailsafe, en: "" }
-                            },
-                            $unset: { subcategorias: "" }
-                        }
-                    );
-                    categoriasMigradas++;
-                } catch (dbErr) {
-                    console.error("No se pudo guardar en BD por desconexión.");
-                    break;
-                }
+                console.error(`❌ Error reparando categoría ${categoria._id}:`, error.message);
             }
         }
 
