@@ -36,11 +36,17 @@ router.post('/migrar-base-datos-i18n', async (req, res) => {
         const categoriasAntiguas = await Categoria.find({ "nombre.es": { $exists: false } }).lean();
         console.log(`Se encontraron ${categoriasAntiguas.length} categorías antiguas para migrar.`);
 
-        for (let categoria of categoriasAntiguas) {
+        // ==========================================
+        // 1. 📂 MIGRACIÓN DE CATEGORÍAS (Cambio a subcategoria singular + i18n)
+        // ==========================================
+        // 🟢 CAMBIAMOS EL NOMBRE DE LA VARIABLE PARA EVITAR EL DUPLICADO ("listaCategoriasViejas")
+        const listaCategoriasViejas = await Categoria.find({ "nombre.es": { $exists: false } }).lean();
+        console.log(`Se encontraron ${listaCategoriasViejas.length} categorías antiguas para migrar.`);
+
+        for (let categoria of listaCategoriasViejas) { // 🟢 Actualizado aquí también
             try {
                 // 1. Capturamos los campos planos antiguos
                 const nombreBase = (categoria.nombre && typeof categoria.nombre === 'string') ? categoria.nombre.trim() : '';
-                // Capturamos el campo viejo en plural 'subcategorias'
                 const subcatBase = (categoria.subcategorias && typeof categoria.subcategorias === 'string') ? categoria.subcategorias.trim() : '';
 
                 if (!nombreBase) {
@@ -61,13 +67,16 @@ router.post('/migrar-base-datos-i18n', async (req, res) => {
                     subcatEn = (resSubcat && resSubcat.text) ? resSubcat.text : "";
                 }
 
-                // 4. Actualizamos la BD: Guardamos lo nuevo bilingüe ($set) y borramos lo viejo en plural ($unset)
+                // 4. Actualizamos la BD: Guardamos en SINGULAR (subcategoria) y eliminamos el PLURAL viejo (subcategorias)
                 await Categoria.updateOne(
                     { _id: categoria._id },
                     {
                         $set: {
                             nombre: { es: nombreBase, en: nombreEn },
-                            subcategorias: { es: subcatBase, en: subcatEn } // Nuevo campo singular bilingüe
+                            subcategoria: { es: subcatBase, en: subcatEn }
+                        },
+                        $unset: {
+                            subcategorias: ""
                         }
                     }
                 );
@@ -83,13 +92,15 @@ router.post('/migrar-base-datos-i18n', async (req, res) => {
                 }
 
                 try {
-                    // Escudo: Si falla internet, guardamos lo que tenemos en español y limpiamos el plural
+                    const nombreFailsafe = (categoria.nombre && typeof categoria.nombre === 'string') ? categoria.nombre : "";
+                    const subcatFailsafe = (categoria.subcategorias && typeof categoria.subcategorias === 'string') ? categoria.subcategorias : "";
+
                     await Categoria.updateOne(
                         { _id: categoria._id },
                         {
                             $set: {
-                                nombre: { es: categoria.nombre || "", en: "" },
-                                subcategoria: { es: categoria.subcategorias || "", en: "" }
+                                nombre: { es: nombreFailsafe, en: "" },
+                                subcategoria: { es: subcatFailsafe, en: "" }
                             },
                             $unset: { subcategorias: "" }
                         }
@@ -101,6 +112,8 @@ router.post('/migrar-base-datos-i18n', async (req, res) => {
                 }
             }
         }
+
+
         console.log("=== Migración de categorías finalizada ===");
 
 
