@@ -55,17 +55,31 @@ const crearSelector = async (req, res) => {
             });
         }
 
-        var selector = new Selector();
+        // 🚀 LA MAGIA: Traducimos automáticamente el título al inglés antes de instanciar
+        let traduccionTitulo = '';
+        const tituloLimpio = data.titulo.trim();
         
-        // Mapeamos el string plano a la estructura bilingüe { es, en }
-        // Guardamos el original en 'es' y dejamos 'en' listo (vacío o puedes traducirlo en caliente)
+        if (tituloLimpio.length > 0) {
+            try {
+                const resTraduccion = await translate(tituloLimpio, { from: 'es', to: 'en' });
+                traduccionTitulo = (resTraduccion && resTraduccion.text) ? resTraduccion.text : '';
+            } catch (errTranslate) {
+                console.error(`⚠️ Falló la traducción del selector para "${tituloLimpio}":`, errTranslate.message);
+                // Opcional: Puedes dejarlo en blanco o clonar el español en caso de falla extrema
+                traduccionTitulo = ''; 
+            }
+        }
+
+        const selector = new Selector();
+        
+        // Mapeamos el string plano a la estructura bilingüe { es, en } real
         selector.titulo = {
-            es: data.titulo.trim(),
-            en: "" // Se traducirá después, o puedes llamar a translate aquí si lo deseas
+            es: tituloLimpio,
+            en: traduccionTitulo // ✅ Guardado automático (Ej: "Salsas" -> "Sauces")
         };
         
         selector.producto = data.producto;
-        selector.estado = data.estado || "activo"; // Añadido por buena práctica si viene en el body
+        selector.estado = data.estado || "activo"; 
 
         // Guardado moderno usando promesas / async-await
         const selector_data = await selector.save();

@@ -43,7 +43,7 @@ router.post('/store/', [
 
 
 router.put('/update/:id', [
-    //  validarJWT,
+     validarJWT,
     check('nombre', 'El nombre del tienda es necesario').not().isEmpty(),
     validarCampos
 ], actualizarTienda);

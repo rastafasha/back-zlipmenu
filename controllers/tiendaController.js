@@ -5,21 +5,21 @@ const User = require('../models/usuario');
 const Categoria = require('../models/categoria');
 const translate = require('google-translate-api-x');
 
-const getTiendas = async(req, res) => {
+const getTiendas = async (req, res) => {
 
 
     const tiendas = await Tienda.find()
-    .sort({ createdAt: -1 })
-    .populate('categoria', 'nombre');
+        .sort({ createdAt: -1 })
+        .populate('categoria', 'nombre');
 
     res.json({
         ok: true,
         tiendas,
-        categoria:Categoria
+        categoria: Categoria
     });
 };
 
-const getTienda = async(req, res) => {
+const getTienda = async (req, res) => {
 
     const id = req.params.id;
     const uid = req.uid;
@@ -72,7 +72,6 @@ const crearTienda = async (req, res) => {
                 esText = campoNuevo.trim();
             }
 
-            // Si hay texto en español pero el inglés vino vacío, lo traducimos al vuelo
             if (esText && !enText) {
                 try {
                     const resTraduccion = await translate(esText, { from: 'es', to: 'en' });
@@ -85,15 +84,23 @@ const crearTienda = async (req, res) => {
             return { es: esText, en: enText };
         };
 
+        // 🚀 AUTOMATIZACIÓN MULTI-TIENDA:
+        // Si en el body envías el ID del admin (data.usuario), la tienda se le asigna a él.
+        // Si no viene nada (porque el admin se está registrando solo), se asigna a su propio uid.
+        const duenoFinal = data.usuario ? data.usuario : uid;
+
+        // 🚨 PROTECCIÓN: Sacamos el campo usuario de data para evitar que el operador spread (...data) lo pise
+        const { usuario, ...restoData } = data;
+
         const tienda = new Tienda({
-            usuario: uid,
-            ...data,
+            ...restoData,
+            usuario: duenoFinal, // ✅ Asignación automática e inteligente del propietario
             slug: slug,
             // 🚀 Traducimos de forma asíncrona cada sección del Hero
-            texto_hero_uno: await traducirCampoI18n(data.texto_hero_uno),
-            texto_hero_dos: await traducirCampoI18n(data.texto_hero_dos),
-            texto_hero_destacado: await traducirCampoI18n(data.texto_hero_destacado),
-            descripcion_hero: await traducirCampoI18n(data.descripcion_hero)
+            texto_hero_uno: await traducirCampoI18n(restoData.texto_hero_uno),
+            texto_hero_dos: await traducirCampoI18n(restoData.texto_hero_dos),
+            texto_hero_destacado: await traducirCampoI18n(restoData.texto_hero_destacado),
+            descripcion_hero: await traducirCampoI18n(restoData.descripcion_hero)
         });
 
         const tiendaDB = await tienda.save();
@@ -104,10 +111,16 @@ const crearTienda = async (req, res) => {
         res.status(500).json({ ok: false, msg: 'Error interno en el servidor.', error: error.message });
     }
 };
+
 const actualizarTienda = async (req, res) => {
     const id = req.params.id;
     const uid = req.uid; // ID de quien ejecuta la acción (tú como superadmin)
     let data = req.body;
+
+    // ✅ CONSOLE.LOG PERFECTAMENTE SITUADO
+    console.log('--- DEBUG UPDATE TIENDA ---');
+    console.log('ID del que ejecuta (uid):', req.uid);
+    console.log('Viene en el body (req.body.usuario):', req.body.usuario);
 
     try {
         const tienda = await Tienda.findById(id);
@@ -115,8 +128,7 @@ const actualizarTienda = async (req, res) => {
             return res.status(404).json({ ok: false, msg: 'Tienda no encontrada por el id' });
         }
 
-        // 🚨 PROTECCIÓN MULTI-TIENDA: Extraemos 'usuario' para que NUNCA se filtre desde el frontend
-        // Guardamos todo lo demás en la variable 'limpioData'
+        // 🚨 PROTECCIÓN MULTI-TIENDA: Aislamos 'usuario' del body para ignorarlo por completo
         const { usuario, ...limpioData } = data;
 
         // 🔥 FUSIÓN + TRADUCCIÓN INTELIGENTE AL ACTUALIZAR
@@ -129,13 +141,13 @@ const actualizarTienda = async (req, res) => {
                 enText = campoNuevo.en !== undefined ? campoNuevo.en.trim() : (campoBaseDatos?.en || '');
             } else if (campoNuevo && typeof campoNuevo === 'string') {
                 esText = campoNuevo.trim();
-                enText = campoBaseDatos?.en || ''; 
+                enText = campoBaseDatos?.en || '';
             } else {
                 return campoBaseDatos || { es: '', en: '' };
             }
 
             const esDiferente = campoBaseDatos?.es !== esText;
-            
+
             if (esText && (esDiferente || !enText)) {
                 try {
                     console.log(`🌐 Re-traduciendo cambio en Hero: "${esText}"`);
@@ -149,11 +161,13 @@ const actualizarTienda = async (req, res) => {
             return { es: esText, en: enText };
         };
 
-        // Construimos el objeto de actualización usando 'limpioData'
+        // ✅ CORRECCIÓN: Construimos cambiosTienda usando 'limpioData' en lugar de 'data'
         const cambiosTienda = {
             ...limpioData,
-            // 🔒 Al NO incluir 'usuario: uid', mantenemos el dueño original intacto en la base de datos
             
+            // 🔒 BLINDAJE ABSOLUTO: Forzamos el dueño original de la base de datos
+            usuario: tienda.usuario, 
+
             texto_hero_uno: await fusionarYTraducirI18n(limpioData.texto_hero_uno, tienda.texto_hero_uno),
             texto_hero_dos: await fusionarYTraducirI18n(limpioData.texto_hero_dos, tienda.texto_hero_dos),
             texto_hero_destacado: await fusionarYTraducirI18n(limpioData.texto_hero_destacado, tienda.texto_hero_destacado),
@@ -176,7 +190,8 @@ const actualizarTienda = async (req, res) => {
 };
 
 
-const borrarTienda = async(req, res) => {
+
+const borrarTienda = async (req, res) => {
 
     const id = req.params.id;
 
@@ -207,16 +222,16 @@ const borrarTienda = async(req, res) => {
 };
 
 
-async function find_by_name (req, res) {
+async function find_by_name(req, res) {
     var nombre = req.params['nombre'];
 
-     try {
+    try {
 
         // Use case-insensitive regex for the search
-        const tienda = await Tienda.findOne({ 
-            nombre: { $regex: nombre, $options: 'i' } 
+        const tienda = await Tienda.findOne({
+            nombre: { $regex: nombre, $options: 'i' }
         }).populate('categoria');
-        
+
         if (!tienda) {
             return res.status(404).json({
                 ok: false,
@@ -243,41 +258,41 @@ function find_by_slug(req, res) {
     var slug = req.params['slug'];
 
     Tienda.findOne({ slug: slug })
-    .exec((err, tienda_data) => {
-        if (err) {
-            res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
-        } else {
-            if (tienda_data) {
-                res.status(200).send({ tienda: tienda_data });
+        .exec((err, tienda_data) => {
+            if (err) {
+                res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
             } else {
-                res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                if (tienda_data) {
+                    res.status(200).send({ tienda: tienda_data });
+                } else {
+                    res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                }
             }
-        }
-    });
+        });
 }
 
 function find_by_userid(req, res) {
     const userid = req.params.userid;
 
     Tienda.find({ user: userid })
-    .populate('user')
-    .populate('categoria')
-    .exec((err, tienda_data) => {
-        if (err) {
-            res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
-        } else {
-            if (tienda_data) {
-                res.status(200).send({ tiendas: tienda_data });
+        .populate('user')
+        .populate('categoria')
+        .exec((err, tienda_data) => {
+            if (err) {
+                res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
             } else {
-                res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                if (tienda_data) {
+                    res.status(200).send({ tiendas: tienda_data });
+                } else {
+                    res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                }
             }
-        }
-    });
+        });
 }
 
-const getTiendasActivos = async(req, res) => {
+const getTiendasActivos = async (req, res) => {
 
-    Tienda.find({  status: ['Activo'] }).exec((err, tienda_data) => {
+    Tienda.find({ status: ['Activo'] }).exec((err, tienda_data) => {
         if (err) {
             res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
         } else {
