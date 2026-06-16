@@ -16,19 +16,19 @@ var TiendaSchema = Schema({
     img_hero: { type: String, required: false },
     // 🎯 INTERNACIONALIZADO: 
     texto_hero_uno: {
-        es: { type: String, required: true }, // "Con papas fritas y aderezo de la casa"
+        es: { type: String, required: false }, // "Con papas fritas y aderezo de la casa"
         en: { type: String, default: '' }     // "With french fries and house dressing"
     },
     texto_hero_dos: {
-        es: { type: String, required: true }, // "Con papas fritas y aderezo de la casa"
+        es: { type: String, required: false }, // "Con papas fritas y aderezo de la casa"
         en: { type: String, default: '' }     // "With french fries and house dressing"
     },
     texto_hero_destacado: {
-        es: { type: String, required: true }, // "Con papas fritas y aderezo de la casa"
+        es: { type: String, required: false }, // "Con papas fritas y aderezo de la casa"
         en: { type: String, default: '' }     // "With french fries and house dressing"
     },
     descripcion_hero: {
-        es: { type: String, required: true }, // "Con papas fritas y aderezo de la casa"
+        es: { type: String, required: false }, // "Con papas fritas y aderezo de la casa"
         en: { type: String, default: '' }     // "With french fries and house dressing"
     },
     
