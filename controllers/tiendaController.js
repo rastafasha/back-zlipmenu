@@ -104,10 +104,9 @@ const crearTienda = async (req, res) => {
         res.status(500).json({ ok: false, msg: 'Error interno en el servidor.', error: error.message });
     }
 };
-
 const actualizarTienda = async (req, res) => {
     const id = req.params.id;
-    const uid = req.uid;
+    const uid = req.uid; // ID de quien ejecuta la acción (tú como superadmin)
     let data = req.body;
 
     try {
@@ -115,6 +114,10 @@ const actualizarTienda = async (req, res) => {
         if (!tienda) {
             return res.status(404).json({ ok: false, msg: 'Tienda no encontrada por el id' });
         }
+
+        // 🚨 PROTECCIÓN MULTI-TIENDA: Extraemos 'usuario' para que NUNCA se filtre desde el frontend
+        // Guardamos todo lo demás en la variable 'limpioData'
+        const { usuario, ...limpioData } = data;
 
         // 🔥 FUSIÓN + TRADUCCIÓN INTELIGENTE AL ACTUALIZAR
         const fusionarYTraducirI18n = async (campoNuevo, campoBaseDatos) => {
@@ -126,13 +129,11 @@ const actualizarTienda = async (req, res) => {
                 enText = campoNuevo.en !== undefined ? campoNuevo.en.trim() : (campoBaseDatos?.en || '');
             } else if (campoNuevo && typeof campoNuevo === 'string') {
                 esText = campoNuevo.trim();
-                enText = campoBaseDatos?.en || ''; // Tomamos el inglés de la BD temporalmente
+                enText = campoBaseDatos?.en || ''; 
             } else {
                 return campoBaseDatos || { es: '', en: '' };
             }
 
-            // DETECTAMOS SI EL ESPAÑOL CAMBIÓ: Si el texto actual en español es diferente al que estaba en BD,
-            // significa que el usuario lo editó, por lo que el inglés viejo ya no sirve y hay que re-traducir.
             const esDiferente = campoBaseDatos?.es !== esText;
             
             if (esText && (esDiferente || !enText)) {
@@ -148,19 +149,19 @@ const actualizarTienda = async (req, res) => {
             return { es: esText, en: enText };
         };
 
+        // Construimos el objeto de actualización usando 'limpioData'
         const cambiosTienda = {
-            ...data,
-            usuario: uid,
-            // 🚀 Evaluamos y re-traducimos dinámicamente si el administrador editó el texto
-            texto_hero_uno: await fusionarYTraducirI18n(data.texto_hero_uno, tienda.texto_hero_uno),
-            texto_hero_dos: await fusionarYTraducirI18n(data.texto_hero_dos, tienda.texto_hero_dos),
-            texto_hero_destacado: await fusionarYTraducirI18n(data.texto_hero_destacado, tienda.texto_hero_destacado),
-            descripcion_hero: await fusionarYTraducirI18n(data.descripcion_hero, tienda.descripcion_hero)
+            ...limpioData,
+            // 🔒 Al NO incluir 'usuario: uid', mantenemos el dueño original intacto en la base de datos
+            
+            texto_hero_uno: await fusionarYTraducirI18n(limpioData.texto_hero_uno, tienda.texto_hero_uno),
+            texto_hero_dos: await fusionarYTraducirI18n(limpioData.texto_hero_dos, tienda.texto_hero_dos),
+            texto_hero_destacado: await fusionarYTraducirI18n(limpioData.texto_hero_destacado, tienda.texto_hero_destacado),
+            descripcion_hero: await fusionarYTraducirI18n(limpioData.descripcion_hero, tienda.descripcion_hero)
         };
 
-        if (data.nombre) {
-            // [Tu lógica nativa exacta del slug se mantiene aquí...]
-            const nombre = data.nombre;
+        if (limpioData.nombre) {
+            const nombre = limpioData.nombre;
             const slug = nombre.toLowerCase().trim().replace(/[\s]+/g, '-').replace(/[^\w\-]+/g, '').replace(/\-\-+/g, '-').replace(/á/g, 'a').replace(/é/g, 'e').replace(/í/g, 'i').replace(/ó/g, 'o').replace(/ú/g, 'u').replace(/ñ/g, 'n').replace(/ü/g, 'u');
             cambiosTienda.slug = slug;
         }
@@ -173,6 +174,7 @@ const actualizarTienda = async (req, res) => {
         res.status(500).json({ ok: false, msg: 'Error interno en el servidor.', error: error.message });
     }
 };
+
 
 const borrarTienda = async(req, res) => {
 

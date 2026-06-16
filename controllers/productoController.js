@@ -8,6 +8,7 @@ const fs = require('fs');
 const { randomInt } = require('crypto');
 const translate = require('google-translate-api-x');
 const path = require('path');
+const mongoose = require('mongoose');
 
 // Internal function to reduce stock programmatically
 async function reducir_stock_internal(productoId, cantidad) {
@@ -204,39 +205,49 @@ const getProductosTiendaId = async(req, res) => {
 
 };
 const getProductosTiendaIdActive = async(req, res) => {
+    // Eliminamos cualquier espacio en blanco o salto de línea que venga del frontend
+    const id = req.params.id.trim(); 
 
-    const id = req.params.id;
-    const uid = req.uid;
+    // Validación de seguridad: Si el ID no tiene el formato correcto de MongoDB, se frena aquí
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+            ok: false,
+            mensaje: 'El ID de la tienda proporcionado no es válido'
+        });
+    }
 
-    // TODO EL FILTRO VA EN EL PRIMER OBJETO
-    Producto.find({ 
-        local: id, 
-        status: 'Activo' // Si es un solo estado, pásalo como String. Si son varios usa: { $in: ['Activo'] }
-    })
-    .populate('local', 'nombre slug categorias subcategorias')
-    .populate('selector') // Ahora sí se mostrará porque no está bloqueado por la proyección
-    .populate('categoria')
-    .sort({ createdAt: -1 })
-    .exec((err, productos) => {
-        if (err) {
-            return res.status(500).json({
-                ok: false,
-                mensaje: 'Error al buscar productos',
-                errors: err
-            });
-        }
-        if (!productos || productos.length === 0) { // Valida también que el arreglo no esté vacío
+    try {
+        // Forzamos el casteo a un ObjectId real de MongoDB para la consulta
+        const productos = await Producto.find({ 
+            local: new mongoose.Types.ObjectId(id), 
+            status: 'Activo' 
+        })
+        .populate('local', 'nombre slug categorias subcategorias')
+        .populate('selector') 
+        .populate('categoria')
+        .sort({ createdAt: -1 });
+
+        if (!productos || productos.length === 0) {
             return res.status(404).json({
                 ok: false,
                 mensaje: 'No se encontraron productos activos para esta tienda',
-                errors: { message: 'No existen productos' }
+                errors: { message: `No hay productos con status 'Activo' asociados al local ID: ${id}` }
             });
         }
-        res.status(200).json({
+
+        return res.status(200).json({
             ok: true,
             productos: productos
         });
-    });
+
+    } catch (error) {
+        console.error('Error al buscar productos activos:', error);
+        return res.status(500).json({
+            ok: false,
+            mensaje: 'Error interno al buscar productos',
+            error: error.message
+        });
+    }
 };
 
 const crearProducto = async(req, res) => {
