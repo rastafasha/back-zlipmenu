@@ -5,11 +5,11 @@ const translate = require('google-translate-api-x');
 const mongoose = require('mongoose');
 
 
-const getCategorias = async(req, res) => {
+const getCategorias = async (req, res) => {
 
     const categorias = await Categoria.find()
-    .sort({ createdAt: -1 })
-    .populate('nombre img subcategorias');
+        .sort({ createdAt: -1 })
+        .populate('nombre img subcategorias');
 
     res.json({
         ok: true,
@@ -17,7 +17,7 @@ const getCategorias = async(req, res) => {
     });
 };
 
-const getCategoria = async(req, res) => {
+const getCategoria = async (req, res) => {
 
     const id = req.params.id;
     const uid = req.uid;
@@ -75,11 +75,13 @@ const getCategoria = async(req, res) => {
 //     });
 // }
 
-const crearCategoria = async(req, res) => {
+const crearCategoria = async (req, res) => {
     const uid = req.uid;
     const nombre = req.body.nombre || '';
     // Capturamos el ID de la tienda/local que viene en el body
-    const localId = req.body.local; 
+    const localId = req.body.local;
+    // Capturamos la subcategoría que viene en el body (asumiendo que viene como un string simple desde el frontend)
+    const subcategoriaInput = req.body.subcategorias || '';
 
     if (!localId) {
         return res.status(400).json({
@@ -101,9 +103,8 @@ const crearCategoria = async(req, res) => {
 
     try {
         // 2. Validación de unicidad MULTI-TIENDA:
-        // Buscamos si YA EXISTE ese slug, pero ESTRICTAMENTE dentro del mismo local
         const existeSlugEnLocal = await Categoria.findOne({ slug: slug, local: localId });
-        
+
         if (existeSlugEnLocal) {
             return res.status(400).json({
                 ok: false,
@@ -111,19 +112,32 @@ const crearCategoria = async(req, res) => {
             });
         }
 
-        // 🚀 LA MAGIA: Traducimos automáticamente el nombre de la sección al inglés
+        // 🚀 TRADUCCIÓN DEL NOMBRE
         const traduccionNombre = await translate(nombre, { from: 'es', to: 'en' });
 
-        // 3. Crear la instancia con el slug limpio y la estructura bilingüe { es, en }
+        // 🚀 TRADUCCIÓN DE LA SUBCATEGORÍA (Si el usuario la envió)
+        let traduccionSubcategoria = '';
+        if (subcategoriaInput.trim().length > 0) {
+            const resSub = await translate(subcategoriaInput, { from: 'es', to: 'en' });
+            traduccionSubcategoria = resSub.text;
+        }
+
+        // 3. Crear la instancia con el slug limpio y las estructuras bilingües
         const categoria = new Categoria({
             ...req.body, // Hereda icono, img, local, productos, etc.
-            usuario: uid, 
+            usuario: uid,
             slug: slug,
-            
-            // Reestructuramos el campo nombre para cumplir con el esquema bilingüe de MongoDB
+
+            // Reestructuramos el campo nombre para cumplir con el esquema bilingüe
             nombre: {
                 es: nombre,
-                en: traduccionNombre.text // Guardado automático en inglés (Ej: "Bebidas" -> "Drinks")
+                en: traduccionNombre.text // Ej: "Bebidas" -> "Drinks"
+            },
+
+            // Reestructuramos las subcategorías para cumplir con tu nuevo esquema bilingüe { es, en }
+            subcategorias: {
+                es: subcategoriaInput,
+                en: traduccionSubcategoria // Ej: "Focacias de medio kilo" -> "Half-kilo focaccias"
             }
         });
 
@@ -135,7 +149,7 @@ const crearCategoria = async(req, res) => {
         });
 
     } catch (error) {
-        console.error('Error al crear categoría:', error); // Ideal para debuggear en Vercel/Render
+        console.error('Error al crear categoría:', error);
         res.status(500).json({
             ok: false,
             msg: 'Error interno, hable con el admin',
@@ -146,7 +160,7 @@ const crearCategoria = async(req, res) => {
 
 
 
-const actualizarCategoria = async(req, res) => {
+const actualizarCategoria = async (req, res) => {
     const id = req.params.id;
     const uid = req.uid;
 
@@ -198,6 +212,23 @@ const actualizarCategoria = async(req, res) => {
             cambiosCategoria.slug = slug;
         }
 
+        // 🚀 NUEVA MAGIA: Traducir de forma reactiva sólo si cambia o se envía la subcategoría
+        if (req.body.subcategorias !== undefined) {
+            const subcategoriaInput = req.body.subcategorias || '';
+            let traduccionSubcategoria = '';
+
+            if (subcategoriaInput.trim().length > 0) {
+                const resSub = await translate(subcategoriaInput, { from: 'es', to: 'en' });
+                traduccionSubcategoria = resSub.text;
+            }
+
+            // Empaquetamos la propiedad bilingüe para sobreescribir el string plano del spread operator
+            cambiosCategoria.subcategorias = {
+                es: subcategoriaInput,
+                en: traduccionSubcategoria
+            };
+        }
+
         // 4. Ejecutar la actualización en MongoDB Atlas
         const categoriaActualizado = await Categoria.findByIdAndUpdate(id, cambiosCategoria, { new: true });
 
@@ -217,7 +248,8 @@ const actualizarCategoria = async(req, res) => {
 };
 
 
-const borrarCategoria = async(req, res) => {
+
+const borrarCategoria = async (req, res) => {
 
     const id = req.params.id;
 
@@ -284,7 +316,7 @@ async function find_by_name(req, res) {
     const termino = req.params['nombre'].toLowerCase().trim();
     // Si puedes enviar el ID del local por query string o headers (ej: req.query.localId) lo capturamos.
     // De lo contrario, hacemos la búsqueda cruzada por categoría:
-    const localId = req.query.localId; 
+    const localId = req.query.localId;
 
     try {
         // 1. Buscamos la categoría correspondiente
@@ -293,7 +325,7 @@ async function find_by_name(req, res) {
                 { slug: termino },
                 { nombre: { $regex: termino, $options: 'i' } }
             ]
-        }); 
+        });
 
         if (!categoria) {
             return res.status(404).json({
@@ -304,10 +336,10 @@ async function find_by_name(req, res) {
 
         // 2. Construimos el filtro dinámico para MongoDB Atlas
         const filtro = { categoria: categoria._id };
-        
+
         // Si desde el frontend nos envían el ID de la tienda activa, filtramos estrictamente por ese local
         if (localId) {
-            filtro.local = localId; 
+            filtro.local = localId;
         }
 
         // 3. Buscamos los platos en la colección de Productos
@@ -351,33 +383,33 @@ function find_by_subcategory(req, res) {
                 });
 
             }
-            Producto.find({ 
+            Producto.find({
                 $or: [
                     { categoria: categoria._id },
                     { subcategoria: id }
                 ],
-                status: ['Activo'] 
+                status: ['Activo']
             })
-            .populate('categoria')
-            .exec((err, productos) => {
-                if (err) {
-                    return res.status(500).send({ message: 'Error al buscar productos.' });
-                }
-                res.json({
-                    ok: true,
-                    categoria: categoria,
-                    productos: productos
+                .populate('categoria')
+                .exec((err, productos) => {
+                    if (err) {
+                        return res.status(500).send({ message: 'Error al buscar productos.' });
+                    }
+                    res.json({
+                        ok: true,
+                        categoria: categoria,
+                        productos: productos
+                    });
                 });
-            });
-    });
+        });
 
-    
+
 }
 
 
-const getCategoriasActivos = async(req, res) => {
+const getCategoriasActivos = async (req, res) => {
 
-    Categoria.find({  status: ['Activo'] }).exec((err, categoria_data) => {
+    Categoria.find({ status: ['Activo'] }).exec((err, categoria_data) => {
         if (err) {
             res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
         } else {
@@ -436,7 +468,7 @@ const getCategoriasByLocal = async (req, res) => {
 
         // 🟢 2. Buscamos de forma directa SIN usar .populate() para evitar que se cuelgue Express
         const categorias = await Categoria.find({ local: localObjectId })
-        .sort({ createdAt: -1 }).lean(); // lean() devuelve objetos JS simples, no documentos Mongoose
+            .sort({ createdAt: -1 }).lean(); // lean() devuelve objetos JS simples, no documentos Mongoose
 
         return res.json({
             ok: true,
