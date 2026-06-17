@@ -213,6 +213,12 @@ const crearUsuarios = async (req, res = response) => {
 
     const body = req.body;
 
+     // 🔀 DESVÍO INTELIGENTE: Si no viene el correo, delegamos a la función Express
+    if (!email || email.trim() === '') {
+        console.log('📝 Cliente sin correo detectado. Derivando a crearClienteExpress...');
+        return crearClienteExpress(req, res);
+    }
+
     try {
 
         const existeEmail = await Usuario.findOne({ email });
@@ -299,18 +305,9 @@ const crearUsuarios = async (req, res = response) => {
 
 
 };
-
 const crearClienteExpress = async (req, res = response) => {
     const { first_name, telefono, local } = req.body;
-    // Creamos un objeto con los datos recibidos
-        const datosUsuario = {
-            first_name,
-            telefono,
-            local,
-            role: 'USER', // O el rol que manejes
-            // 🟢 Generamos un email único ficticio para engañar al índice de MongoDB
-            email: `express_${telefono}@zlipemu.com` 
-        };
+
     try {
         // 1. Validar que al menos envíen los datos mínimos del formulario express
         if (!first_name || !telefono) {
@@ -335,12 +332,22 @@ const crearClienteExpress = async (req, res = response) => {
         }
 
         // 3. SI ES UN CLIENTE NUEVO: Autogeneramos credenciales seguras en segundo plano
-        // Creamos una contraseña aleatoria secreta para cumplir con el modelo de base de datos
         const salt = bcrypt.genSaltSync();
         const passwordTemporal = Math.random().toString(36).slice(-8); // Clave aleatoria de 8 dígitos
         const passwordEncriptada = bcrypt.hashSync(passwordTemporal, salt);
 
-        // Instanciamos el modelo solo con lo que tenemos del formulario rápido
+        // 📝 Creamos el objeto con los datos recibidos E incluimos la contraseña generada
+        // Ajusta 'password' si tu propiedad en el Schema se llama diferente
+        const datosUsuario = {
+            first_name,
+            telefono,
+            local,
+            role: 'USER', 
+            email: `express_${telefono}@zlipmenu.com`, // 🟢 Corregido typo de zlipmenu
+            password: passwordEncriptada // 🔑 ¡CRÍTICO! Añadido para que Mongoose no lance error de validación
+        };
+
+        // Instanciamos el modelo con el objeto completo
         usuario = new Usuario(datosUsuario);
 
         // 4. Guardar en MongoDB
@@ -364,6 +371,7 @@ const crearClienteExpress = async (req, res = response) => {
         });
     }
 };
+
 
 
 const actualizarUAdmin = async (req, res = response) => {

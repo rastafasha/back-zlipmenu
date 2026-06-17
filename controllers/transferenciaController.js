@@ -75,6 +75,8 @@ const crearTransferencia = async (req, res) => {
         ...req.body
     });
 
+
+
     try {
         const transferenciaDB = await transferencia.save();
         const id = transferenciaDB._id;
@@ -83,7 +85,24 @@ const crearTransferencia = async (req, res) => {
         // 🚀 NUEVA LÓGICA REPARADA: FILTRADO EXACTO POR TIENDA (Igual que en pedidos)
         // =========================================================================
         try {
-            // 1. Buscamos los usuarios administradores dueños de ESTA tienda específica
+            const tituloAdmin = '¡Nuevo Pago Registrado! 💰';
+            const mensajeAdmin = `El cliente reportó una transferencia por ${transferenciaDB.amount || 0}$.`;
+            const urlRedireccionAdmin = `/dashboard/transferencias`;
+            // 📝 PASO 1: GUARDAR UNA SOLA NOTIFICACIÓN PARA EL HISTORIAL COMPARTIDO DEL LOCAL
+            // Seteamos usuario en null y enlazamos directamente al ID de la tienda/local
+            const nuevaNotiLocal = new Notificacion({
+                usuario: null,
+                local: idTiendaTarget, // Guardamos el ID de la tienda directamente
+                titulo: tituloAdmin,
+                mensaje: mensajeAdmin,
+                tipo: 'NUEVO_PAGO',
+                referenciaId: id,
+                leido: false // Aseguramos que nazca en falso para encender el globo
+            });
+            await nuevaNotiLocal.save();
+            console.log(`📝 Historial de pago registrado exclusivamente para el local:`, idTiendaTarget);
+
+            // 2. Buscamos los usuarios administradores dueños de ESTA tienda específica
             const usuariosAutorizados = await Usuario.find({
                 $or: [
                     { role: 'SUPERADMIN' },
@@ -100,27 +119,12 @@ const crearTransferencia = async (req, res) => {
                 });
 
                 if (subsFiltradas.length > 0) {
-                    const tituloAdmin = '¡Nuevo Pago Registrado! 💰';
-                    const mensajeAdmin = `El cliente reportó una transferencia por ${transferenciaDB.amount || 0}$.`;
-                    const urlRedireccionAdmin = `/dashboard/transferencias`;
-
-                    // 1. Guardamos en tu Schema de Notificaciones (Historial de la campana)
-                    const adminIdsUnicos = [...new Set(idsAutorizados)];
-                    const promesasNotificaciones = adminIdsUnicos.map(adminId => {
-                        const nuevaNoti = new Notificacion({
-                            usuario: adminId,
-                            titulo: tituloAdmin,
-                            mensaje: mensajeAdmin,
-                            tipo: 'NUEVO_PAGO', // Satisface tu ENUM médico/restaurante permitido
-                            referenciaId: id,
-                            leido: false // Aseguramos que nazca en falso para encender el globo
-                        });
-                        return nuevaNoti.save();
+                    // 2. Buscamos las suscripciones push asociadas exclusivamente a esos administradores
+                    const subsFiltradas = await PushSubscription.find({
+                        usuario: { $in: idsAutorizados }
                     });
-                    await Promise.all(promesasNotificaciones);
-                    console.log(`🔔 Alertas de pago guardadas en MongoDB para la campana.`);
 
-                    // 2. CORREGIDO: Despachamos el Web Push en tiempo real usando s.subscription
+                    // 🚀 PASO 2: DESPACHAMOS EL WEB PUSH EN TIEMPO REAL A LOS DISPOSITIVOS
                     subsFiltradas.forEach(s => {
                         sendNotification(
                             s.subscription, // 🔧 REPARADO: Pasamos el objeto de suscripción limpio igual que en reservas
@@ -137,6 +141,7 @@ const crearTransferencia = async (req, res) => {
                             }
                         });
                     });
+
                 }
             }
 
@@ -170,24 +175,24 @@ const crearTransferencia = async (req, res) => {
                     }
 
                     // Envío de correo corporativo al administrador del local
-                    const correoDestinoAdmin = tiendaDB.emailAdmin || tiendaDB.email;
-                    if (correoDestinoAdmin) {
-                        transporter.sendMail({
-                            from: process.env.EMAIL_BACKEND,
-                            to: correoDestinoAdmin,
-                            subject: `🚨 Alerta de Pago: Nueva Transferencia en ${nombreRestaurante} 💰`,
-                            text: textoWhatsApp.replace(/\*/g, '') // Quitamos las negritas de WhatsApp para el mail
-                        }).then(() => {
-                            console.log(`=== Correo de alerta de pago enviado a: ${correoDestinoAdmin} ===`);
-                        }).catch(emailError => {
-                            console.error('Error enviando correo de pago:', emailError.message);
-                        });
-                    }
+                    // const correoDestinoAdmin = tiendaDB.emailAdmin || tiendaDB.email;
+                    // if (correoDestinoAdmin) {
+                    //     transporter.sendMail({
+                    //         from: process.env.EMAIL_BACKEND,
+                    //         to: correoDestinoAdmin,
+                    //         subject: `🚨 Alerta de Pago: Nueva Transferencia en ${nombreRestaurante} 💰`,
+                    //         text: textoWhatsApp.replace(/\*/g, '') // Quitamos las negritas de WhatsApp para el mail
+                    //     }).then(() => {
+                    //         console.log(`=== Correo de alerta de pago enviado a: ${correoDestinoAdmin} ===`);
+                    //     }).catch(emailError => {
+                    //         console.error('Error enviando correo de pago:', emailError.message);
+                    //     });
+                    // }
                 }
             }
 
-        } catch (errorNotiAdmin) {
-            console.error('Error interno procesando las alertas del pago:', errorNotiAdmin);
+        } catch (errorNotiPago) {
+            console.error('Error en bloque de notificaciones de pago:', errorNotiPago);
         }
 
         // Retornamos la respuesta inmediata al cliente de Angular
@@ -404,7 +409,6 @@ const updateStatus = async (req, res) => {
 
         // =========================================================================
 
-
         // 🚀 DISPARO CENTRALIZADO DE NOTIFICACIÓN HYBRIDA
         if (status !== undefined && status !== antiguoEstado) {
 
@@ -417,6 +421,23 @@ const updateStatus = async (req, res) => {
                 : `Hubo un problema con tu transferencia. Motivo: ${req.body.observaciones || 'Datos incorrectos'}`;
 
             const urlRedireccion = `/mis-pagos`;
+
+            // =========================================================================
+            // 📝 PASO 1: GUARDAR EN LA BASE DE DATOS PARA EL HISTORIAL DEL CLIENTE
+            // =========================================================================
+            // Al definir local: null garantizamos que no aparezca en el historial del comercio
+            const nuevaNotificacionUsuario = new Notificacion({
+                usuario: clienteId,
+                local: transferencia.local,
+                titulo: titulo,
+                mensaje: mensaje,
+                tipo: tipoNotificacion,
+                referenciaId: transferencia._id,
+                leido: false
+            });
+            await nuevaNotificacionUsuario.save();
+            console.log(`📝 Historial de notificación [${tipoNotificacion}] guardado para el cliente:`, clienteId);
+            // =========================================================================
 
             // Buscamos los dispositivos Push usando el clienteId correcto que guardamos arriba
             const subs = await PushSubscription.find({ usuario: clienteId });

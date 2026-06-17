@@ -42,10 +42,28 @@ const crearPedidoMenu = async (req, res) => {
         const pedidoDB = await pedido.save();
 
         // =========================================================================
-        // 🔒 SEGURIDAD COMPLETA: FILTRADO EXACTO POR LOCAL DEL USUARIO
+        // 🔒 SEGURIDAD COMPLETA: FILTRADO EXACTO POR LOCAL Y PERSISTENCIA DE HISTORIAL
         // =========================================================================
         try {
-            // Buscamos los usuarios administradores autorizados
+            const nombreCliente = existeUsuario.first_name || existeUsuario.nombre || 'Un cliente';
+            const tituloAdmin = '¡Nuevo Pedido Entrante! 🍕';
+            const mensajeAdmin = `${nombreCliente} ha realizado un pedido en tu tienda.`;
+            const urlRedireccionAdmin = `/dashboard/tienda/pedidos`;
+
+            // 📝 PASO 1: GUARDAR LA NOTIFICACIÓN EN LA BASE DE DATOS PARA EL HISTORIAL DEL LOCAL
+            // Usamos la propiedad 'local' de la Solución 1, dejando 'usuario: null' para que no se ligue con nadie personal
+            const nuevaNotificacionLocal = new Notificacion({
+                usuario: null,
+                local: body.tienda, // Guardamos el ID de la tienda directamente
+                titulo: tituloAdmin,
+                mensaje: mensajeAdmin,
+                tipo: 'NUEVO_PEDIDO',
+                referenciaId: pedidoDB._id
+            });
+            await nuevaNotificacionLocal.save();
+            console.log('📝 Historial de notificación registrado para la tienda:', body.tienda);
+
+            // Buscamos los usuarios administradores autorizados para alertas push
             const usuariosAutorizados = await Usuario.find({
                 $or: [
                     { role: 'SUPERADMIN' },
@@ -58,18 +76,10 @@ const crearPedidoMenu = async (req, res) => {
             if (idsAutorizados.length > 0) {
                 // Buscamos las suscripciones asociadas a los administradores
                 const subsFiltradas = await PushSubscription.find({
-                    usuario: { $in: idsAutorizados } // Ajusta a 'user' si tu modelo usa 'user'
+                    usuario: { $in: idsAutorizados }
                 });
 
                 if (subsFiltradas.length > 0) {
-                    const tituloAdmin = '¡Nuevo Pedido Entrante! 🍕';
-                    const nombreCliente = existeUsuario.first_name || existeUsuario.nombre || 'Un cliente';
-                    const mensajeAdmin = `${nombreCliente} ha realizado un pedido en tu tienda.`;
-                    const urlRedireccionAdmin = `/dashboard/tienda/pedidos`;
-
-                    // 🚀 CORRECCIÓN: Eliminamos el bloque 'new Notificacion' que rompía el código
-                    // y pasamos directamente al envío del Web Push nativo
-
                     // DISPARAMOS EL WEB PUSH AL NAVEGADOR DE FORMA SEGURA
                     subsFiltradas.forEach(async (s) => {
                         try {
@@ -78,7 +88,7 @@ const crearPedidoMenu = async (req, res) => {
                                 tituloAdmin,
                                 mensajeAdmin,
                                 urlRedireccionAdmin,
-                                s.usuario, // Ajusta a 's.user' si corresponde
+                                s.usuario,
                                 'NUEVO_PEDIDO',
                                 pedidoDB._id
                             );
@@ -100,10 +110,6 @@ const crearPedidoMenu = async (req, res) => {
         }
         // =========================================================================
 
-        // =========================================================================
-
-        // =========================================================================
-
         res.json({
             ok: true,
             pedido: pedidoDB
@@ -117,8 +123,6 @@ const crearPedidoMenu = async (req, res) => {
         });
     }
 };
-
-
 
 
 const actualizarPedidoMenu = async (req, res) => {
@@ -307,7 +311,6 @@ async function activar(req, res) {
         }
 
         // 🚀 DISPARO CENTRALIZADO DE NOTIFICACIÓN HÍBRIDA
-        // Definimos textos atractivos para el cliente de Zlipmenu
         const tipoNotificacion = 'PEDIDO_APROBADO';
         const titulo = '¡Tu pedido está en proceso! 🍳';
         const mensaje = `El comercio ha aceptado tu orden y ya la está preparando.`;
@@ -315,6 +318,23 @@ async function activar(req, res) {
         // El cliente que realizó la compra
         const clienteId = pedido_data.user || pedido_data.cliente;
         const urlRedireccion = `/my-account/pedidos/${pedido_data._id}`;
+
+        // =========================================================================
+        // 📝 PASO 1: GUARDAR EN LA BASE DE DATOS PARA EL HISTORIAL DEL USUARIO
+        // =========================================================================
+        // Al asignar 'local: null', evitamos que esta notificación de cliente
+        // aparezca por error en el historial del negocio.
+        const nuevaNotificacionUsuario = new Notificacion({
+            usuario: clienteId,
+            local: null,
+            titulo: titulo,
+            mensaje: mensaje,
+            tipo: tipoNotificacion,
+            referenciaId: pedido_data._id
+        });
+        await nuevaNotificacionUsuario.save();
+        console.log('📝 Historial de notificación registrado para el cliente:', clienteId);
+        // =========================================================================
 
         // Buscamos si el cliente tiene dispositivos con Web Push activos
         const subs = await PushSubscription.find({ user: clienteId });
@@ -334,7 +354,7 @@ async function activar(req, res) {
             }
         } else {
             // Caso B: Tu iPhone 6s o navegadores sin soporte Push nativo.
-            // Pasa null en la sub, pero ejecuta el guardado en base de datos y el WebSocket
+            // Pasa null en la sub, pero ejecuta el WebSocket si lo manejas adentro
             await sendNotification(null, titulo, mensaje, urlRedireccion, clienteId, tipoNotificacion, pedido_data._id);
         }
 
@@ -363,7 +383,6 @@ async function finalizado(req, res) {
         }
 
         // 🚀 DISPARO CENTRALIZADO DE NOTIFICACIÓN HÍBRIDA
-        // Ahora sí usamos el tipo oficial gracias a tu nuevo ENUM
         const tipoNotificacion = 'PEDIDO_FINALIZADO';
         const titulo = '¡Tu pedido ha finalizado! 🍳';
         const mensaje = `Gracias por comprar y usar nuestra App. ¡Vuelve pronto!`;
@@ -371,6 +390,22 @@ async function finalizado(req, res) {
         // Extracción segura del _id del objeto 'user'
         const clienteId = pedido_data.user?._id || pedido_data.user || pedido_data.cliente;
         const urlRedireccion = `/my-account/pedidos/${pedido_data._id}`;
+
+        // =========================================================================
+        // 📝 PASO 1: GUARDAR EN LA BASE DE DATOS PARA EL HISTORIAL DEL USUARIO
+        // =========================================================================
+        // Fijamos local en null para romper definitivamente el ligue con el comercio
+        const nuevaNotificacionUsuario = new Notificacion({
+            usuario: clienteId,
+            local: null,
+            titulo: titulo,
+            mensaje: mensaje,
+            tipo: tipoNotificacion,
+            referenciaId: pedido_data._id
+        });
+        await nuevaNotificacionUsuario.save();
+        console.log('📝 Historial de notificación registrado para el cliente:', clienteId);
+        // =========================================================================
 
         // Búsqueda de suscripciones usando el campo correcto 'usuario'
         const subs = await PushSubscription.find({ usuario: clienteId });
@@ -389,7 +424,6 @@ async function finalizado(req, res) {
             }
         } else {
             // Caso B: Tu iPhone 6s u otros entornos sin soporte push nativo activo.
-            // Esto guardará el historial en Mongo con el nuevo ENUM y emitirá por Sockets
             await sendNotification(null, titulo, mensaje, urlRedireccion, clienteId, tipoNotificacion, pedido_data._id);
         }
 
@@ -401,6 +435,7 @@ async function finalizado(req, res) {
         res.status(500).send({ message: err.message || 'Error interno en el servidor' });
     }
 };
+
 
 
 

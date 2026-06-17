@@ -106,7 +106,6 @@ const startServer = async () => {
     app.use('/api/tiendas', require('./routes/tienda'));
     app.use('/api/marcas', require('./routes/marcas'));
     app.use('/api/categorias', require('./routes/categoria'));
-    app.use('/api/cursos', require('./routes/curso'));
     app.use('/api/productos', require('./routes/producto'));
     app.use('/api/colors', require('./routes/color'));
     app.use('/api/selectors', require('./routes/selector'));

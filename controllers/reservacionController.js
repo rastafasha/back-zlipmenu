@@ -141,7 +141,7 @@ const crearReservacion = async (req, res) => {
         }
         // =========================================================================
 
-        
+
         // 2. Procedemos a crear el documento de la reserva con el ID final del usuario
         const nuevaReserva = new Reservacion({
             fecha,
@@ -160,11 +160,11 @@ const crearReservacion = async (req, res) => {
             usuario: uid    // Guardamos la referencia del usuario creado o autenticado
         });
 
-         // =========================================================================
+        // =========================================================================
         // 🛡️ CONTROL DE SOBRECUPO EN TIEMPO REAL (Antes de guardar en MongoDB)
         // =========================================================================
         const limiteTienda = tienda.capacidad_por_hora || 20;
-        
+
         // Ejecutamos el helper pasándole los parámetros limpios
         const chequeoEnTiempoReal = await verificarCapacidadTurno(local, fecha, hora, limiteTienda);
 
@@ -183,11 +183,28 @@ const crearReservacion = async (req, res) => {
         // 🔒 SEGURIDAD COMPLETA: NOTIFICAR RESERVA EXCLUSIVA AL LOCAL
         // =========================================================================
         try {
-            // Buscamos los usuarios autorizados: SUPERADMIN o ADMIN asignados a ese 'local'
+            const tituloAdmin = '¡Nueva Reserva Recibida! 🗓️';
+            const mensajeAdmin = `${first_name} ${last_name} solicita mesa para ${personas} personas el ${fecha}.`;
+            const urlRedireccionAdmin = `/dashboard/reservaciones`;
+
+            // 📝 PASO 1: GUARDAR UNA SOLA NOTIFICACIÓN PARA EL HISTORIAL COMPARTIDO DEL LOCAL
+            // Ponemos usuario en null y enlazamos directamente al ID del 'local'
+            const nuevaNotiLocal = new Notificacion({
+                usuario: null,
+                local: local, // Usamos la variable 'local' que ya tienes en el scope de tu función
+                titulo: tituloAdmin,
+                mensaje: mensajeAdmin,
+                tipo: 'NUEVA_RESERVACION',
+                referenciaId: reservaGuardada._id
+            });
+            await nuevaNotiLocal.save();
+            console.log('📝 Historial de reserva registrado exclusivamente para el local:', local);
+
+            // Buscamos los usuarios autorizados únicamente para disparar las alertas Web Push en tiempo real
             const usuariosAutorizados = await Usuario.find({
                 $or: [
                     { role: 'SUPERADMIN' },
-                    { role: 'ADMIN', local: local } // 🟢 Campo exacto de tu modelo de Usuario
+                    { role: 'ADMIN', local: local }
                 ]
             });
 
@@ -200,24 +217,7 @@ const crearReservacion = async (req, res) => {
                 });
 
                 if (subsFiltradas.length > 0) {
-                    const tituloAdmin = '¡Nueva Reserva Recibida! 🗓️';
-                    const mensajeAdmin = `${first_name} ${last_name} solicita mesa para ${personas} personas el ${fecha}.`;
-                    const urlRedireccionAdmin = `/dashboard/reservaciones`;
-
-                    // 1. Guardamos en tu Schema de Notificaciones (Historial de la campana)
-                    const promesasNotificaciones = idsAutorizados.map(adminId => {
-                        const nuevaNoti = new Notificacion({
-                            usuario: adminId,
-                            titulo: tituloAdmin,
-                            mensaje: mensajeAdmin,
-                            tipo: 'NUEVA_RESERVACION',
-                            referenciaId: reservaGuardada._id
-                        });
-                        return nuevaNoti.save();
-                    });
-                    await Promise.all(promesasNotificaciones);
-
-                    // 2. Despachamos el Web Push en tiempo real
+                    // 🚀 PASO 2: DESPACHAMOS EL WEB PUSH EN TIEMPO REAL A LOS DISPOSITIVOS
                     subsFiltradas.forEach(s => {
                         sendNotification(
                             s.subscription,
@@ -255,7 +255,6 @@ const crearReservacion = async (req, res) => {
         });
     }
 };
-
 const actualizarReservacion = async (req, res) => {
     const id = req.params.id;
     const { status, observaciones } = req.body;
@@ -282,10 +281,8 @@ const actualizarReservacion = async (req, res) => {
         const clienteId = reservacion.usuario;
 
         // 3. Actualizamos el documento de forma segura usando object assignment y save()
-        // Esto permite mantener consistencia y disparar hooks de Mongoose si los tuvieras
         Object.assign(reservacion, req.body);
 
-        // Si viene observaciones (especialmente en cancelaciones), las guardamos
         if (observaciones) {
             reservacion.observaciones = observaciones;
         }
@@ -326,9 +323,22 @@ const actualizarReservacion = async (req, res) => {
                     break;
             }
 
-            // Si el estado no coincide con ninguno de estos tres, no se gatilla la alerta
+            // Si el estado coincide con los ENUMs, procesamos la persistencia y el envío
             if (tipoNotificacion) {
                 const urlRedireccion = `/mis-reservaciones`;
+
+                // 📝 PASO 1: GUARDAR EN LA BASE DE DATOS PARA EL HISTORIAL EXCLUSIVO DEL CLIENTE
+                // Forzamos local en null para que no se contamine el panel del negocio
+                const nuevaNotificacionUsuario = new Notificacion({
+                    usuario: clienteId,
+                    local: null, 
+                    titulo: titulo,
+                    mensaje: mensaje,
+                    tipo: tipoNotificacion,
+                    referenciaId: reservacionActualizada._id
+                });
+                await nuevaNotificacionUsuario.save();
+                console.log(`📝 Historial de notificación [${tipoNotificacion}] registrado para el cliente:`, clienteId);
 
                 // Buscamos las suscripciones Push del cliente utilizando su ID
                 const subs = await PushSubscription.find({ usuario: clienteId });
@@ -342,16 +352,15 @@ const actualizarReservacion = async (req, res) => {
                             urlRedireccion,
                             clienteId,
                             tipoNotificacion,
-                            reservacionActualizada._id // Pasa como referenciaId
+                            reservacionActualizada._id 
                         ).catch(err => {
-                            // Limpieza automática si la suscripción expiró o ya no es válida
                             if (err.statusCode === 410 || err.statusCode === 404) {
                                 s.deleteOne().catch(e => console.log('Error eliminando sub', e));
                             }
                         });
                     });
                 } else {
-                    // Si no tiene Push Web activo, se guarda directo en la BD para que lo vea en la app
+                    // Si no tiene Push Web activo, disparamos la función nativa para WebSockets / Fallbacks
                     await sendNotification(
                         null,
                         titulo,
@@ -379,6 +388,7 @@ const actualizarReservacion = async (req, res) => {
         });
     }
 };
+
 
 
 const borrarReservacion = async (req, res) => {
@@ -512,18 +522,18 @@ const obtenerEstadisticasReservas = async (req, res) => {
             {
                 $match: {
                     local: new mongoose.Types.ObjectId(localId),
-                    status: { $ne: 'Cancelada' } 
+                    status: { $ne: 'Cancelada' }
                 }
             },
             {
                 $group: {
-                    _id: { $dateToString: { format: "%Y-%m-%d", date: "$fecha" } }, 
-                    totalReservas: { $sum: 1 }, 
-                    totalPersonas: { $sum: "$personas" } 
+                    _id: { $dateToString: { format: "%Y-%m-%d", date: "$fecha" } },
+                    totalReservas: { $sum: 1 },
+                    totalPersonas: { $sum: "$personas" }
                 }
             },
-            { $sort: { _id: 1 } }, 
-            { $limit: 10 } 
+            { $sort: { _id: 1 } },
+            { $limit: 10 }
         ]);
 
         res.json({
