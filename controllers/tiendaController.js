@@ -50,7 +50,6 @@ const getTienda = async (req, res) => {
         });
 
 };
-
 const crearTienda = async (req, res) => {
     try {
         const uid = req.uid;
@@ -85,16 +84,16 @@ const crearTienda = async (req, res) => {
         };
 
         // 🚀 AUTOMATIZACIÓN MULTI-TIENDA:
-        // Si en el body envías el ID del admin (data.usuario), la tienda se le asigna a él.
+        // Si en el body envías el ID del admin (data.usuario o data.user), la tienda se le asigna a él.
         // Si no viene nada (porque el admin se está registrando solo), se asigna a su propio uid.
-        const duenoFinal = data.usuario ? data.usuario : uid;
+        const duenoFinal = data.usuario || data.user || uid;
 
-        // 🚨 PROTECCIÓN: Sacamos el campo usuario de data para evitar que el operador spread (...data) lo pise
-        const { usuario, ...restoData } = data;
+        // 🚨 PROTECCIÓN: Sacamos 'usuario' y 'user' de data para evitar que el operador spread (...data) los pise
+        const { usuario, user, ...restoData } = data;
 
         const tienda = new Tienda({
             ...restoData,
-            usuario: duenoFinal, // ✅ Asignación automática e inteligente del propietario
+            user: duenoFinal, // ✅ CORREGIDO: Mapeamos a la propiedad 'user' exacta de tu TiendaSchema
             slug: slug,
             // 🚀 Traducimos de forma asíncrona cada sección del Hero
             texto_hero_uno: await traducirCampoI18n(restoData.texto_hero_uno),
@@ -120,7 +119,7 @@ const actualizarTienda = async (req, res) => {
     // ✅ CONSOLE.LOG PERFECTAMENTE SITUADO
     console.log('--- DEBUG UPDATE TIENDA ---');
     console.log('ID del que ejecuta (uid):', req.uid);
-    console.log('Viene en el body (req.body.usuario):', req.body.usuario);
+    console.log('Viene en el body (req.body.user):', req.body.user);
 
     try {
         const tienda = await Tienda.findById(id);
@@ -128,8 +127,8 @@ const actualizarTienda = async (req, res) => {
             return res.status(404).json({ ok: false, msg: 'Tienda no encontrada por el id' });
         }
 
-        // 🚨 PROTECCIÓN MULTI-TIENDA: Aislamos 'usuario' del body para ignorarlo por completo
-        const { usuario, ...limpioData } = data;
+        // 🚨 PROTECCIÓN MULTI-TIENDA: Aislamos tanto 'usuario' como 'user' del body para ignorarlos por completo
+        const { usuario, user, ...limpioData } = data;
 
         // 🔥 FUSIÓN + TRADUCCIÓN INTELIGENTE AL ACTUALIZAR
         const fusionarYTraducirI18n = async (campoNuevo, campoBaseDatos) => {
@@ -165,8 +164,9 @@ const actualizarTienda = async (req, res) => {
         const cambiosTienda = {
             ...limpioData,
             
-            // 🔒 BLINDAJE ABSOLUTO: Forzamos el dueño original de la base de datos
-            usuario: tienda.usuario, 
+            // 🔒 BLINDAJE ABSOLUTO: Forzamos el dueño original ('user') de la base de datos
+            // Esto evita que un hacker o un error del frente cambie el dueño de la tienda
+            user: tienda.user, 
 
             texto_hero_uno: await fusionarYTraducirI18n(limpioData.texto_hero_uno, tienda.texto_hero_uno),
             texto_hero_dos: await fusionarYTraducirI18n(limpioData.texto_hero_dos, tienda.texto_hero_dos),
@@ -188,6 +188,7 @@ const actualizarTienda = async (req, res) => {
         res.status(500).json({ ok: false, msg: 'Error interno en el servidor.', error: error.message });
     }
 };
+
 
 
 

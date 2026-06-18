@@ -8,11 +8,10 @@ const PushSubscription = require('../models/push-subscription');
 const { sendNotification } = require('../helpers/notificaciones');
 
 const crearPedidoMenu = async (req, res) => {
-    const { user, pedidoList, tienda } = req.body;
-
+    const { user, pedidoList, tienda, delivery, deliveryAddres } = req.body;
     const body = req.body;
-    try {
 
+    try {
         const existeUsuario = await Usuario.findById(body.user);
         const existeTienda = await Tienda.findById(body.tienda);
 
@@ -29,13 +28,19 @@ const crearPedidoMenu = async (req, res) => {
             });
         }
 
+        
+
+        // Forzamos el estatus inicial de forma inteligente:
+        // Si es POS_DIRECTO nace como 'NEW' para tu ERP. Si no, usa el que mande Angular por defecto.
+        const estatusInicial = existeTienda.tipoFlujo === 'POS_DIRECTO' ? 'NEW' : (body.status || 'NEW');
+
         const pedido = new Pedido({
             user: body.user,
             pedidoList: body.pedidoList,
             tienda: body.tienda,
             delivery: body.delivery,
             deliveryAddres: body.deliveryAddres,
-            status: body.status,
+            status: estatusInicial,
         });
 
         // Guardar pedido
@@ -51,10 +56,9 @@ const crearPedidoMenu = async (req, res) => {
             const urlRedireccionAdmin = `/dashboard/tienda/pedidos`;
 
             // 📝 PASO 1: GUARDAR LA NOTIFICACIÓN EN LA BASE DE DATOS PARA EL HISTORIAL DEL LOCAL
-            // Usamos la propiedad 'local' de la Solución 1, dejando 'usuario: null' para que no se ligue con nadie personal
             const nuevaNotificacionLocal = new Notificacion({
                 usuario: null,
-                local: body.tienda, // Guardamos el ID de la tienda directamente
+                local: body.tienda, 
                 titulo: tituloAdmin,
                 mensaje: mensajeAdmin,
                 tipo: 'NUEVO_PEDIDO',
@@ -92,10 +96,10 @@ const crearPedidoMenu = async (req, res) => {
                                 'NUEVO_PEDIDO',
                                 pedidoDB._id
                             );
-                            console.log(`✅ Push enviado con éxito al dispositivo: ${s.usuario || s.user}`);
+                            console.log(`... Push enviado con éxito al dispositivo: ${s.usuario || s.user}`);
 
                         } catch (err) {
-                            console.error('❌ Error capturado al enviar el Web Push:', err);
+                            console.error('... Error capturado al enviar el Web Push:', err);
 
                             if (err.statusCode === 410 || err.statusCode === 404) {
                                 await PushSubscription.findByIdAndDelete(s._id);
@@ -123,6 +127,7 @@ const crearPedidoMenu = async (req, res) => {
         });
     }
 };
+
 
 
 const actualizarPedidoMenu = async (req, res) => {
@@ -322,11 +327,11 @@ async function activar(req, res) {
         // =========================================================================
         // 📝 PASO 1: GUARDAR EN LA BASE DE DATOS PARA EL HISTORIAL DEL USUARIO
         // =========================================================================
-        // Al asignar 'local: null', evitamos que esta notificación de cliente
-        // aparezca por error en el historial del negocio.
+        // 🔑 CORREGIDO: Cambiamos 'local: null' por 'local: pedido_data.tienda'
+        // Esto permite que el cliente vea la alerta SOLO cuando visite esta tienda específica.
         const nuevaNotificacionUsuario = new Notificacion({
             usuario: clienteId,
-            local: null,
+            local: pedido_data.tienda, // Mapea directo al ID de la tienda del pedido
             titulo: titulo,
             mensaje: mensaje,
             tipo: tipoNotificacion,
@@ -354,7 +359,6 @@ async function activar(req, res) {
             }
         } else {
             // Caso B: Tu iPhone 6s o navegadores sin soporte Push nativo.
-            // Pasa null en la sub, pero ejecuta el WebSocket si lo manejas adentro
             await sendNotification(null, titulo, mensaje, urlRedireccion, clienteId, tipoNotificacion, pedido_data._id);
         }
 
@@ -394,10 +398,11 @@ async function finalizado(req, res) {
         // =========================================================================
         // 📝 PASO 1: GUARDAR EN LA BASE DE DATOS PARA EL HISTORIAL DEL USUARIO
         // =========================================================================
-        // Fijamos local en null para romper definitivamente el ligue con el comercio
+        // 🔑 CORREGIDO: Cambiamos 'local: null' por 'local: pedido_data.tienda'
+        // Esto amarra la notificación al historial segmentado de esta tienda
         const nuevaNotificacionUsuario = new Notificacion({
             usuario: clienteId,
-            local: null,
+            local: pedido_data.tienda, // Mapea al ID de la tienda del pedido
             titulo: titulo,
             mensaje: mensaje,
             tipo: tipoNotificacion,
@@ -435,6 +440,7 @@ async function finalizado(req, res) {
         res.status(500).send({ message: err.message || 'Error interno en el servidor' });
     }
 };
+
 
 
 

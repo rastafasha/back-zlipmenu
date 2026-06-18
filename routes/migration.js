@@ -99,9 +99,7 @@ router.post('/migrar-base-datos-i18n', async (req, res) => {
             }
         }
 
-
         console.log("=== Migración de categorías finalizada ===");
-
 
         // ==========================================
         // 2. 🍔 MIGRACIÓN DE PRODUCTOS (PLATOS)
@@ -274,7 +272,12 @@ router.post('/migrar-base-datos-i18n', async (req, res) => {
                             texto_hero_uno: { es: heroUnoBase, en: heroUnoEn },
                             texto_hero_dos: { es: heroDosBase, en: heroDosEn },
                             texto_hero_destacado: { es: heroDestacadoBase, en: heroDestacadoEn },
-                            descripcion_hero: { es: descHeroBase, en: descHeroEn }
+                            descripcion_hero: { es: descHeroBase, en: descHeroEn },
+
+                            // 🔑 INYECCIÓN INTERNACIONAL EXITOSA
+                            tipoFlujo: 'WHATSAPP',
+                            acepta_usd_internacional: false,
+                            acepta_eur: false
                         }
                     }
                 );
@@ -298,7 +301,12 @@ router.post('/migrar-base-datos-i18n', async (req, res) => {
                                 texto_hero_uno: { es: tienda.texto_hero_uno || '', en: '' },
                                 texto_hero_dos: { es: tienda.texto_hero_dos || '', en: '' },
                                 texto_hero_destacado: { es: tienda.texto_hero_destacado || '', en: '' },
-                                descripcion_hero: { es: tienda.descripcion_hero || '', en: '' }
+                                descripcion_hero: { es: tienda.descripcion_hero || '', en: '' },
+
+                                // 🔑 INYECCIÓN INTERNACIONAL DE RESPALDO
+                                tipoFlujo: 'WHATSAPP',
+                                acepta_usd_internacional: false,
+                                acepta_eur: false
                             }
                         }
                     );
@@ -309,6 +317,24 @@ router.post('/migrar-base-datos-i18n', async (req, res) => {
                 }
             }
         }
+        // =========================================================================
+        // 🛡️ LÍNEA DE PROTECCIÓN GLOBAL DE SEGURIDAD 
+        // =========================================================================
+        // Esto asegura a TODAS las tiendas que sí tenían traducción pero les faltaba el flujo
+        const proteccionGlobal = await Tienda.updateMany(
+            { tipoFlujo: { $exists: false } },
+            {
+                $set: {
+                    tipoFlujo: 'WHATSAPP',
+                    acepta_usd_internacional: false,
+                    acepta_eur: false
+                }
+            }
+        );
+        console.log(`🛡️ Control global completado: ${proteccionGlobal.modifiedCount} tiendas aseguradas.`);
+
+        console.log(`✨ Proceso de migración de tiendas finalizado con éxito. Total migradas del hero: ${tiendasMigradas}`);
+
         console.log("=== Migración de textos Hero de tiendas finalizada ===");
 
         // ==========================================

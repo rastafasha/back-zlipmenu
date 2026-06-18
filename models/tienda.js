@@ -5,31 +5,48 @@ var TiendaSchema = Schema({
     nombre: { type: String, required: true },
     slug: { type: String, required: true, unique: true },
     local: { type: String, required: true },
-    moneda: { type: String, required: false },
+    
+    // 🌍 MULTI-MONEDA GLOBAL: Lo dejamos como String libre para que acepte 'USD', 'EUR', 'ARS', 'CLP', 'UYU', 'EGP', etc.
+    moneda: { type: String, required: true, default: 'USD' }, 
+    
+    // ⚙️ CONTROL DE FLUJO INTERNACIONAL: Define si el pedido va a WhatsApp o directo al POS de MongoDB
+    tipoFlujo: { 
+        type: String, 
+        enum: ['WHATSAPP', 'POS_DIRECTO'], 
+        default: 'WHATSAPP',
+        required: true 
+    },
+
+    // 💳 FLEXIBILIDAD DE PAGOS: Switches para encender metodologías internacionales en el Checkout
+    acepta_usd_internacional: { type: Boolean, default: false, required: true }, // Zelle / Swift
+    acepta_eur: { type: Boolean, default: false, required: true },               // Bizum / SEPA Europa
+
     ciudad: { type: String, required: false },
     zip: { type: String, required: false },
     direccion: { type: String, required: false },
     telefono: { type: String, required: false },
     redssociales: { type: Array, required: false },
     img: { type: String, required: false },
+    
     //hero section
     img_hero: { type: String, required: false },
+    
     // 🎯 INTERNACIONALIZADO: 
     texto_hero_uno: {
-        es: { type: String, required: false }, // "Con papas fritas y aderezo de la casa"
-        en: { type: String, default: '' }     // "With french fries and house dressing"
+        es: { type: String, required: false }, 
+        en: { type: String, default: '' }     
     },
     texto_hero_dos: {
-        es: { type: String, required: false }, // "Con papas fritas y aderezo de la casa"
-        en: { type: String, default: '' }     // "With french fries and house dressing"
+        es: { type: String, required: false }, 
+        en: { type: String, default: '' }     
     },
     texto_hero_destacado: {
-        es: { type: String, required: false }, // "Con papas fritas y aderezo de la casa"
-        en: { type: String, default: '' }     // "With french fries and house dressing"
+        es: { type: String, required: false }, 
+        en: { type: String, default: '' }     
     },
     descripcion_hero: {
-        es: { type: String, required: false }, // "Con papas fritas y aderezo de la casa"
-        en: { type: String, default: '' }     // "With french fries and house dressing"
+        es: { type: String, required: false }, 
+        en: { type: String, default: '' }     
     },
     
     color_primario: { type: String, required: false, default: '#e74c3c' }, 
@@ -46,11 +63,12 @@ var TiendaSchema = Schema({
     has_reservacion: { type: Boolean, required: true, default: false },
     capacidad_por_hora:{type: Number, required: false },
     isFeatured: { type: Boolean, required: false },
+    mostrarTasas: { type: Boolean, required: false },
     
     // 💳 Campos listos para el esquema de suscripción:
-    plan: { type: String, required: false, default: 'Gratis' }, // 'Gratis', 'Premium', 'VIP'
-    fechaVencimiento: { type: Date, required: false }, // Día exacto en que expira el acceso
-    idSuscripcionPago: { type: String, required: false }, // Para guardar el ID de Stripe/PayPal en el futuro
+    plan: { type: String, required: false, default: 'Gratis' }, 
+    fechaVencimiento: { type: Date, required: false }, 
+    idSuscripcionPago: { type: String, required: false }, 
     
     //registro para enviar notificaciones 
     whatsappStatus: { 
@@ -58,7 +76,7 @@ var TiendaSchema = Schema({
         enum: ['CONECTADO', 'DESCONECTADO', 'ESPERANDO_QR'], 
         default: 'DESCONECTADO' 
     },
-    whatsappQR: { type: String, default: '' }, // Aquí se guarda el string del código QR
+    whatsappQR: { type: String, default: '' }, 
     whatsappConnectedAt: { type: Date },
 
     createdAt: { type: Date, default: Date.now, required: true },

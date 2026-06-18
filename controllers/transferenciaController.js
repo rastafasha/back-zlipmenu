@@ -329,6 +329,37 @@ const updateStatus = async (req, res) => {
         const transferenciaActualizado = await transferencia.save();
 
         // =========================================================================
+        // 🗑️ LÓGICA ANTI-ESTAFA: ELIMINACIÓN AUTOMÁTICA SI EL PAGO ES RECHAZADO
+        // =========================================================================
+
+        if (estadoNormalizado === 'rechazado' || estadoNormalizado === 'no' || status === 'false') {
+            console.log(`❌ Pago rechazado por el administrador. Motivo: ${observaciones}`);
+
+            // Extraemos el ID del pedido amarrado a esta transferencia
+            // Usamos un condicional por si viene poblado como objeto o viene el ID directo como String
+            const idPedidoReal = transferencia.pedido?._id || transferencia.pedido;
+
+            if (idPedidoReal) {
+                // 1. Borramos el pedido de la colección 'pedidomenus' para limpiar el ERP de la cocina
+                await PedidoMenu.findByIdAndDelete(idPedidoReal);
+                console.log(`🗑️ Pedido basura ${idPedidoReal} eliminado de MongoDB.`);
+            }
+
+            // 2. Borramos la transferencia falsa de la colección 'transferencias' para no dejar basura financiera
+            await Transferencia.findByIdAndDelete(id);
+            console.log(`🗑️ Transferencia fraudulenta ${id} eliminada de MongoDB.`);
+
+            // 3. Respondemos con éxito avisando al panel que la orden fue destruida
+            return res.json({
+                ok: true,
+                msg: 'Intento de estafa detectado. Pedido y transferencia eliminados del sistema.',
+                motivo: observaciones || 'No especificado'
+            });
+            
+            // 🛑 Detenemos la ejecución aquí para que no intente crear la venta de abajo
+        }
+
+        // =========================================================================
         // 🚀 NUEVA LÓGICA: GENERAR VENTA AUTOMÁTICA AL APROBAR
         // =========================================================================
         const estadoNormalizado = status ? status.toLowerCase() : '';
