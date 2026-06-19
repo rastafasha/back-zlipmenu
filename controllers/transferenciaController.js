@@ -548,7 +548,7 @@ const byTienda = async (req, res) => {
 
     var tiendaid = req.params['tiendaid'];
     try {
-        const data_transferencia = await Transferencia.find({ tienda: tiendaid })
+        const data_transferencia = await Transferencia.find({ local: tiendaid })
             .populate('metodo_pago')
             .populate('local')
             .populate('pedido')
