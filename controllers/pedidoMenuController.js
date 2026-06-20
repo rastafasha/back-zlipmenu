@@ -371,22 +371,23 @@ async function activar(req, res) {
     }
 }
 async function desactivar(req, res) {
-    const id = req.params.id; // Sintaxis limpia para capturar el id
+    const id = req.params.id;
 
     try {
-        // 1. Corregido: Agregamos { new: true } como tercer parámetro para que devuelva el pedido con status: 'PENDING'
         const pedido_data = await Pedido.findByIdAndUpdate(
             id,
             { status: 'PENDING' },
-            { new: true } 
+            { 
+                new: true,           // Devuelve el pedido modificado
+                runValidators: true, // 💡 Obliga a Mongoose a validar el campo 'status'
+                overwrite: false     // Evita que se sobreescriban otros campos por error
+            } 
         );
 
-        // 2. Corregido: Si el ID no existe en la BD, disparamos un error 404
         if (!pedido_data) {
             return res.status(404).send({ message: 'El pedido no fue encontrado en el sistema.' });
         }
 
-        // 3. Respondemos al frontend con el pedido ya actualizado en tiempo real
         res.status(200).send({ pedido: pedido_data });
 
     } catch (err) {
@@ -394,6 +395,7 @@ async function desactivar(req, res) {
         res.status(500).send({ message: err.message || 'Error interno en el servidor' });
     }
 }
+
 
 
 async function finalizado(req, res) {

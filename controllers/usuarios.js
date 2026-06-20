@@ -1,5 +1,6 @@
 const { response } = require('express');
 const Usuario = require('../models/usuario');
+const Direccion = require('../models/direccion');
 const bcrypt = require('bcryptjs');
 const { generarJWT } = require('../helpers/jwt');
 const Tienda = require('../models/tienda');
@@ -305,11 +306,12 @@ const crearUsuarios = async (req, res = response) => {
 
 
 };
+
 const crearClienteExpress = async (req, res = response) => {
-    const { first_name, telefono, local } = req.body;
+    // 1. Extraemos los campos mínimos de usuario y los campos que exige tu Schema de Direccion
+    const { first_name, telefono, local, direccion, latitud, longitud } = req.body;
 
     try {
-        // 1. Validar que al menos envíen los datos mínimos del formulario express
         if (!first_name || !telefono) {
             return res.status(400).json({
                 ok: false,
@@ -317,11 +319,10 @@ const crearClienteExpress = async (req, res = response) => {
             });
         }
 
-        // 2. LA LLAVE ÚNICA AHORA ES EL TELÉFONO: Verificamos si ya existe el cliente
+        // 2. Verificamos si ya existe el cliente por teléfono
         let usuario = await Usuario.findOne({ telefono });
 
         if (usuario) {
-            // Si el cliente ya existe en la BD (ha comprado antes), generamos su token y lo dejamos pasar
             const token = await generarJWT(usuario.id);
             return res.json({
                 ok: true,
@@ -331,34 +332,49 @@ const crearClienteExpress = async (req, res = response) => {
             });
         }
 
-        // 3. SI ES UN CLIENTE NUEVO: Autogeneramos credenciales seguras en segundo plano
+        // 3. SI ES UN CLIENTE NUEVO: Autogeneramos credenciales en segundo plano
         const salt = bcrypt.genSaltSync();
-        const passwordTemporal = Math.random().toString(36).slice(-8); // Clave aleatoria de 8 dígitos
+        const passwordTemporal = Math.random().toString(36).slice(-8); 
         const passwordEncriptada = bcrypt.hashSync(passwordTemporal, salt);
 
-        // 📝 Creamos el objeto con los datos recibidos E incluimos la contraseña generada
-        // Ajusta 'password' si tu propiedad en el Schema se llama diferente
         const datosUsuario = {
             first_name,
             telefono,
             local,
             role: 'USER', 
-            email: `express_${telefono}@zlipmenu.com`, // 🟢 Corregido typo de zlipmenu
-            password: passwordEncriptada // 🔑 ¡CRÍTICO! Añadido para que Mongoose no lance error de validación
+            email: `express_${telefono}@zlipmenu.com`, 
+            password: passwordEncriptada 
         };
 
-        // Instanciamos el modelo con el objeto completo
         usuario = new Usuario(datosUsuario);
-
-        // 4. Guardar en MongoDB
+        
+        // 4. Guardamos el Usuario en MongoDB (Esto nos genera el usuario.id real)
         await usuario.save();
 
-        // 5. Generar su Token JWT para que quede logueado en la sesión de Angular
+        // 5. 💡 INYECCIÓN EXCLUSIVA PARA TU SCHEMA DE DIRECCIÓN:
+        // Si la orden viene en modo 'delivery', le creamos el documento en su colección
+        if (latitud && longitud) {
+            const nuevaDireccion = new Direccion({
+                nombres_completos: first_name,
+                direccion: direccion || 'Dirección Express',
+                referencia: 'Pedido realizado desde Carrito Express', // Campo requerido true en tu Schema
+                latitud: String(latitud),  // Tu Schema pide que sean String
+                longitud: String(longitud),
+                user: usuario.id, // 🔑 Amárrate con el ID del usuario recién creado
+                pais: 'Venezuela', // Por defecto o jálalo si lo mandas en el body
+                ciudad: 'Caracas'
+            });
+
+            await nuevaDireccion.save();
+            console.log('📌 Dirección express guardada en su propia colección con éxito.');
+        }
+
+        // 6. Generar su Token JWT de sesión
         const token = await generarJWT(usuario.id);
 
         res.json({
             ok: true,
-            msg: 'Nuevo cliente express creado exitosamente.',
+            msg: 'Nuevo cliente express y dirección creados exitosamente.',
             usuario,
             token
         });
@@ -371,6 +387,7 @@ const crearClienteExpress = async (req, res = response) => {
         });
     }
 };
+
 
 
 

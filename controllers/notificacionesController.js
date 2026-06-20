@@ -1,44 +1,51 @@
 const Notificacion = require('../models/notificacion');
 
-// GET: /api/notificaciones/historial
-// controllers/notificaciones.js
 const obtenerHistorial = async (req, res) => {
     const pagina = Number(req.query.page) || 1;
-    const { localId } = req.query; // 🔑 Capturamos la tienda que está visitando desde Angular
+    const { localId, role } = req.query; // 💡 Sugerencia: Puedes pasar el rol desde Angular ('ADMIN', 'USER')
     const limite = 10;
     const skip = (pagina - 1) * limite;
 
     try {
         let query = {};
 
-        if (localId) {
+        // 🧠 CLAVE: Evaluamos por el rol del usuario que hace la petición
+        // Si el rol es de cliente, filtramos obligatoriamente por SU id y el local
+        if (role === 'CLIENTE' || role === 'USER') {
+            
             // =========================================================================
-            // 🛒 ESCENARIO CLIENTE: El usuario está navegando dentro de una tienda específica
+            // 🛒 ESCENARIO CLIENTE: El cliente ve SU propio historial de esa tienda
             // =========================================================================
-            // Buscamos las notificaciones del cliente, pero enlazadas obligatoriamente a esa tienda.
-            // Para que esto funcione, en tus controladores 'activar', 'finalizado' y 'update status'
-            // debes asegurarte de guardar el 'local' (ej: local: pedido_data.tienda o transferencia.local)
-            // en lugar de dejarlo en null.
+            if (!localId) {
+                return res.status(400).json({ ok: false, msg: 'El ID del local es requerido para el cliente.' });
+            }
             query = { 
                 usuario: req.uid, 
                 local: localId 
             };
+
         } else {
             // =========================================================================
-            // 🏪 ESCENARIO DASHBOARD: Es el historial del local para sus administradores
+            // 🏪 ESCENARIO DASHBOARD: El Administrador ve TODOS los pedidos de SU local
             // =========================================================================
-            // Si eres un admin en tu panel, necesitas ver todas las alertas del local sin importar el usuario.
-            // (Este es el código que reparamos en 'crearPedidoMenu' y 'crearTransferencia')
-            // Nota: Si manejas paneles administrativos donde el admin pasa su local, puedes ajustar
-            // la lógica para que valide los roles, pero este es el comportamiento base ideal.
-            query = { usuario: req.uid }; 
+            // 💡 REPARACIÓN CRÍTICA: Aquí usamos el localId obligatorio del restaurante, 
+            // eliminando el filtro de 'usuario: req.uid' para poder ver las órdenes de todos los comensales.
+            if (!localId) {
+                return res.status(400).json({ ok: false, msg: 'El ID del local es obligatorio para el panel de administración.' });
+            }
+            
+            query = { 
+                local: localId 
+            }; 
         }
 
         const [notificaciones, total] = await Promise.all([
             Notificacion.find(query)
                 .sort({ createdAt: -1 })
                 .skip(skip)
-                .limit(limite),
+                .limit(limite)
+                // .populate('usuario', 'first_name telefono') // Opcional: Por si quieres ver los datos del cliente en la lista
+                ,
             Notificacion.countDocuments(query)
         ]);
 
@@ -49,9 +56,10 @@ const obtenerHistorial = async (req, res) => {
         });
     } catch (error) {
         console.error('Error al obtener historial segmentado:', error);
-        res.status(500).json({ ok: false });
+        res.status(500).json({ ok: false, msg: 'Error en el servidor' });
     }
 };
+
 
 
 
