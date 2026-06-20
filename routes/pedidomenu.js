@@ -15,6 +15,7 @@
     listarPedidoPorUser,
     getPedidosByStatus,
     activar,
+    desactivar,
     finalizado,
     pedidosbyTiendaId,
     pedidosbyTiendaIdUser,
@@ -42,6 +43,7 @@
  
 
  router.put('/activar/:id', validarJWT, activar);
+ router.put('/desactivar/:id', validarJWT, desactivar);
  router.put('/finalizado/:id', validarJWT, finalizado);
  
  router.delete('/remove/:id', 
