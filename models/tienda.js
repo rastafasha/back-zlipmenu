@@ -64,6 +64,7 @@ var TiendaSchema = Schema({
     capacidad_por_hora:{type: Number, required: false },
     isFeatured: { type: Boolean, required: false },
     mostrarTasas: { type: Boolean, required: false },
+    usaDelivery: { type: Boolean, required: false },
     
     // 💳 Campos listos para el esquema de suscripción:
     plan: { type: String, required: false, default: 'Gratis' }, 

@@ -1,5 +1,6 @@
 const { response } = require('express');
 const Postal = require('../models/postal');
+const Tienda = require('../models/tienda');
 
 function getPostals(req, res) {
     Postal.find().exec((err, data_postales) => {
@@ -15,7 +16,7 @@ function getPostals(req, res) {
     });
 }
 
-const getPostal = async(req, res) => {
+const getPostal = async (req, res) => {
 
     const id = req.params.id;
     const uid = req.uid;
@@ -46,16 +47,27 @@ const getPostal = async(req, res) => {
 
 };
 
-const crearPostal = async(req, res) => {
+const crearPostal = async (req, res) => {
 
     const uid = req.uid;
+    const localId = req.body.local;
+
+    // 1. Validación estricta del local con el mensaje correcto
+    if (!localId) {
+        return res.status(400).json({
+            ok: false,
+            msg: 'El ID del local es obligatorio para registrar el delivery.'
+        });
+    }
+
+    // 2. Creamos la instancia limpiamente
     const postal = new Postal({
         usuario: uid,
         ...req.body
     });
 
     try {
-
+        // 3. Guardamos en la base de datos
         const postalDB = await postal.save();
 
         res.json({
@@ -64,54 +76,43 @@ const crearPostal = async(req, res) => {
         });
 
     } catch (error) {
-        // console.log(error);
+        console.error('Error al crear postal:', error); // Mejor un console.error en desarrollo
         res.status(500).json({
             ok: false,
-            msg: 'Hable con el admin'
+            msg: 'Error interno en el servidor, hable con el administrador.'
         });
     }
-
-
 };
 
-const actualizarPostal = async(req, res) => {
-
-    const id = req.params.id;
-    const uid = req.uid;
+// Tu controlador de Node.js recibe 'datosAsignacion' en el req.body
+const actualizarPostal = async (req, res) => {
+    const id = req.params.id; // El ID del pedido que enviamos en Angular
 
     try {
-
-        const postal = await Postal.findById(id);
-        if (!postal) {
-            return res.status(500).json({
-                ok: false,
-                msg: 'Postal no encontrado por el id'
-            });
-        }
-
         const cambiosPostal = {
-            ...req.body,
-            usuario: uid
-        }
+            ...req.body, // Aquí entran las coordenadas de entrega y el nuevo status 'INPROCESS'
+            usuario: req.uid // ID del administrador/restaurante que asignó
+        };
 
-        const postalActualizado = await Postal.findByIdAndUpdate(id, cambiosPostal, { new: true });
+        const postalDB = await Postal.findByIdAndUpdate(id, cambiosPostal, { new: true });
+
+        if (!postalDB) {
+            return res.status(404).json({ ok: false, msg: 'Envío no encontrado' });
+        }
 
         res.json({
             ok: true,
-            postalActualizado
+            postal: postalDB // La app del conductor estará escuchando este cambio para pintar su mapa
         });
 
     } catch (error) {
-        res.status(500).json({
-            ok: false,
-            msg: 'Error hable con el admin'
-        });
+        res.status(500).json({ ok: false, msg: 'Error al asignar envío' });
     }
-
-
 };
 
-const borrarPostal = async(req, res) => {
+
+
+const borrarPostal = async (req, res) => {
 
     const id = req.params.id;
 
@@ -140,6 +141,32 @@ const borrarPostal = async(req, res) => {
     }
 };
 
+const obtenerPostalesPorLocal = async (req, res) => {
+    
+    // 1. Capturamos el ID del local desde los parámetros de la ruta
+    const localId = req.params.localId;
+
+    try {
+        // 2. Buscamos en la base de datos todos los deliveries de ese local
+        // .populate() es opcional, por si quieres traer los datos del usuario que lo creó
+        const postalesDB = await Postal.find({ local: localId });
+
+        // 3. Respondemos con la lista (si está vacía, manda un arreglo vacío [])
+        res.json({
+            ok: true,
+            postales: postalesDB
+        });
+
+    } catch (error) {
+        console.error('Error al obtener postales por local:', error);
+        res.status(500).json({
+            ok: false,
+            msg: 'Error interno en el servidor, hable con el administrador.'
+        });
+    }
+};
+
+
 
 module.exports = {
     getPostals,
@@ -147,4 +174,5 @@ module.exports = {
     actualizarPostal,
     borrarPostal,
     getPostal,
+    obtenerPostalesPorLocal
 };
