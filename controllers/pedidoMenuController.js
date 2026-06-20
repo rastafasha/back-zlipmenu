@@ -371,29 +371,30 @@ async function activar(req, res) {
     }
 }
 async function desactivar(req, res) {
-    const id = req.params['id'];
+    const id = req.params.id; // Sintaxis limpia para capturar el id
 
     try {
-        // 1. Actualizamos el pedido. { new: true } nos devuelve el pedido YA modificado.
+        // 1. Corregido: Agregamos { new: true } como tercer parámetro para que devuelva el pedido con status: 'PENDING'
         const pedido_data = await Pedido.findByIdAndUpdate(
-            { _id: id },
+            id,
             { status: 'PENDING' },
+            { new: true } 
         );
 
+        // 2. Corregido: Si el ID no existe en la BD, disparamos un error 404
         if (!pedido_data) {
-            return res.status(403).send({ message: 'No se actualizó el pedido, vuelva a intentar nuevamente.' });
+            return res.status(404).send({ message: 'El pedido no fue encontrado en el sistema.' });
         }
 
-
-       
-        // 2. Respondemos al frontend que ejecutó la acción (ej: el panel de administración)
+        // 3. Respondemos al frontend con el pedido ya actualizado en tiempo real
         res.status(200).send({ pedido: pedido_data });
 
     } catch (err) {
-        console.error(err);
+        console.error('Error al desactivar/actualizar pedido:', err);
         res.status(500).send({ message: err.message || 'Error interno en el servidor' });
     }
 }
+
 
 async function finalizado(req, res) {
     const id = req.params['id'];
