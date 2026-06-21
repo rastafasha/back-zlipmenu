@@ -6,12 +6,10 @@ const PedidoMenuSchema = Schema({
   
     pedidoList: { type: Array, require: true },
     delivery: { type: String, require: false },
+    costodelivery: { type: String, require: false },
     deliveryAddres: { type: String, require: false },
-    tienda: {
-        type: Schema.Types.ObjectId,
-        ref: 'tienda',
-        require: true
-    },
+    tienda: { type: Schema.Types.ObjectId, ref: 'tienda', require: true },
+    direccion: {  type: Schema.Types.ObjectId, ref: 'direccion', require: false },
     status: { type: String, required: false, default: 'PENDING' },
     createdAt: { type: Date, default: Date.now, required: true },
     updatedAt: { type: Date }

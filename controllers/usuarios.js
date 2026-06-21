@@ -308,8 +308,8 @@ const crearUsuarios = async (req, res = response) => {
 };
 
 const crearClienteExpress = async (req, res = response) => {
-    // 1. Extraemos los campos mínimos de usuario y los campos que exige tu Schema de Direccion
-    const { first_name, telefono, local, direccion, latitud, longitud } = req.body;
+    // 1. Extraemos los campos del body
+    const { first_name, telefono, local, direccion, referencia, nombres_completos, deliveryPosition } = req.body;
 
     try {
         if (!first_name || !telefono) {
@@ -319,74 +319,102 @@ const crearClienteExpress = async (req, res = response) => {
             });
         }
 
-        // 2. Verificamos si ya existe el cliente por teléfono
+        // 2. Buscamos si ya existe el cliente por teléfono
         let usuario = await Usuario.findOne({ telefono });
+        let esClienteNuevo = false;
 
-        if (usuario) {
-            const token = await generarJWT(usuario.id);
-            return res.json({
-                ok: true,
-                msg: 'Cliente existente identificado correctamente.',
-                usuario,
-                token
-            });
+        if (!usuario) {
+            // 3. SI ES UN CLIENTE NUEVO: Autogeneramos credenciales en segundo plano
+            esClienteNuevo = true;
+            const salt = bcrypt.genSaltSync();
+            const passwordTemporal = Math.random().toString(36).slice(-8); 
+            const passwordEncriptada = bcrypt.hashSync(passwordTemporal, salt);
+
+            const datosUsuario = {
+                first_name,
+                telefono,
+                local,
+                role: 'USER', 
+                email: `express_${telefono}@zlipmenu.com`, 
+                password: passwordEncriptada 
+            };
+
+            usuario = new Usuario(datosUsuario);
+            // Guardamos el nuevo Usuario en MongoDB para obtener su usuario.id
+            await usuario.save();
         }
 
-        // 3. SI ES UN CLIENTE NUEVO: Autogeneramos credenciales en segundo plano
-        const salt = bcrypt.genSaltSync();
-        const passwordTemporal = Math.random().toString(36).slice(-8); 
-        const passwordEncriptada = bcrypt.hashSync(passwordTemporal, salt);
+        // 4. PROCESAR COORDENADAS (Válido para usuarios nuevos y existentes)
+        let direccionGuardada = null;
+        let lat = req.body.latitud;
+        let lng = req.body.longitud;
 
-        const datosUsuario = {
-            first_name,
-            telefono,
-            local,
-            role: 'USER', 
-            email: `express_${telefono}@zlipmenu.com`, 
-            password: passwordEncriptada 
-        };
+        // Si las coordenadas vienen juntas en deliveryPosition, las separamos
+        if (deliveryPosition && typeof deliveryPosition === 'string') {
+            const coordenadas = deliveryPosition.split(',');
+            if (coordenadas.length === 2) {
+                lat = coordenadas[0].trim();
+                lng = coordenadas[1].trim();
+            }
+        }
 
-        usuario = new Usuario(datosUsuario);
-        
-        // 4. Guardamos el Usuario en MongoDB (Esto nos genera el usuario.id real)
-        await usuario.save();
-
-        // 5. 💡 INYECCIÓN EXCLUSIVA PARA TU SCHEMA DE DIRECCIÓN:
-        // Si la orden viene en modo 'delivery', le creamos el documento en su colección
-        if (latitud && longitud) {
-            const nuevaDireccion = new Direccion({
-                nombres_completos: first_name,
-                direccion: direccion || 'Dirección Express',
-                referencia: 'Pedido realizado desde Carrito Express', // Campo requerido true en tu Schema
-                latitud: String(latitud),  // Tu Schema pide que sean String
-                longitud: String(longitud),
-                user: usuario.id, // 🔑 Amárrate con el ID del usuario recién creado
-                pais: 'Venezuela', // Por defecto o jálalo si lo mandas en el body
-                ciudad: 'Caracas'
+        // 5. 🛑 BLOQUEO DE DUPLICADOS: Solo guardamos si hay coordenadas reales y NO son '0,0'
+        if (lat && lng && lat !== '0' && lng !== '0') {
+            
+            // 🧠 VALIDACIÓN EXTRA: Verificamos si este mismo usuario ya tiene exactamente esta latitud y longitud guardada
+            const direccionExistente = await Direccion.findOne({ 
+                user: usuario.id, 
+                latitud: String(lat), 
+                longitud: String(lng) 
             });
 
-            await nuevaDireccion.save();
-            console.log('📌 Dirección express guardada en su propia colección con éxito.');
+            if (!direccionExistente) {
+                const nuevaDireccion = new Direccion({
+                    nombres_completos: nombres_completos || first_name,
+                    direccion: direccion || 'Dirección Express',
+                    referencia: referencia || 'Sin referencia', 
+                    latitud: String(lat),  
+                    longitud: String(lng),
+                    user: usuario.id,
+                });
+
+                // Guardamos la nueva ubicación en su colección correspondiente
+                direccionGuardada = await nuevaDireccion.save();
+                console.log(`📌 Nueva dirección creada con éxito para el usuario ${usuario.telefono}.`);
+            } else {
+                // Si ya existía la misma lat/lng, usamos el ID de la dirección que ya estaba en la base de datos
+                direccionGuardada = direccionExistente;
+                console.log(`🛑 Dirección idéntica detectada. No se duplicó en la base de datos.`);
+            }
         }
 
         // 6. Generar su Token JWT de sesión
         const token = await generarJWT(usuario.id);
 
-        res.json({
+        // 7. Respuesta unificada (Agregamos return por seguridad de memoria)
+        return res.json({
             ok: true,
-            msg: 'Nuevo cliente express y dirección creados exitosamente.',
+            msg: esClienteNuevo 
+                ? 'Nuevo cliente express y dirección creados exitosamente.' 
+                : 'Cliente existente identificado correctamente.',
             usuario,
+            // Devolvemos el ID real (ya sea el nuevo creado o el que ya existía en el sistema)
+            direccionId: direccionGuardada ? direccionGuardada._id : null, 
             token
         });
 
     } catch (error) {
         console.log(error);
-        res.status(500).json({
+        // Colocamos return aquí para asegurar que Node.js libere la memoria ante un crash catastrófico
+        return res.status(500).json({
             ok: false,
             msg: 'Error inesperado en checkout express... revisar logs'
         });
     }
 };
+
+
+
 
 
 

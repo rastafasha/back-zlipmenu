@@ -67,7 +67,18 @@ var TiendaSchema = Schema({
     usaDelivery: { type: Boolean, required: false },
     
     // 💳 Campos listos para el esquema de suscripción:
+    // beneficios pro: Reservaciones, Delivery con gps, app delivery
     plan: { type: String, required: false, default: 'Gratis' }, 
+    planSuscripcion: {
+        type: String,
+        enum: ['BASICO', 'PRO', 'PREMIUM'],
+        default: 'PRO' // Los dejas probar el PRO por una semana para que vean el GPS funcionando
+    },
+    planVence: {
+        type: Date,
+        // Multiplicamos 7 días * 24 horas * 60 minutos * 60 segundos * 1000 milisegundos
+        default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) 
+    },
     fechaVencimiento: { type: Date, required: false }, 
     idSuscripcionPago: { type: String, required: false }, 
     

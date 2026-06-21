@@ -8,7 +8,7 @@ const PushSubscription = require('../models/push-subscription');
 const { sendNotification } = require('../helpers/notificaciones');
 
 const crearPedidoMenu = async (req, res) => {
-    const { user, pedidoList, tienda, delivery, deliveryAddres } = req.body;
+    const { user, pedidoList, tienda, delivery, deliveryAddres, direccion,costodelivery } = req.body;
     const body = req.body;
 
     try {
@@ -39,6 +39,8 @@ const crearPedidoMenu = async (req, res) => {
             pedidoList: body.pedidoList,
             tienda: body.tienda,
             delivery: body.delivery,
+            costodelivery: body.costodelivery,
+            direccion: body.direccion,
             deliveryAddres: body.deliveryAddres,
             status: estatusInicial,
         });
@@ -209,6 +211,7 @@ const getPedidoMenu = async (req, res) => {
     Pedido.findById(id)
         .populate('user', 'nombre email')
         .populate('tienda', 'nombre direccion')
+        .populate('direccion')
         .exec((err, pedido) => {
             if (err) {
                 return res.status(500).json({
@@ -377,11 +380,7 @@ async function desactivar(req, res) {
         const pedido_data = await Pedido.findByIdAndUpdate(
             id,
             { status: 'PENDING' },
-            { 
-                new: true,           // Devuelve el pedido modificado
-                runValidators: true, // 💡 Obliga a Mongoose a validar el campo 'status'
-                overwrite: false     // Evita que se sobreescriban otros campos por error
-            } 
+            
         );
 
         if (!pedido_data) {
