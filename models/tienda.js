@@ -24,6 +24,9 @@ var TiendaSchema = Schema({
     ciudad: { type: String, required: false },
     zip: { type: String, required: false },
     direccion: { type: String, required: false },
+    direccion: { type: String, required: false },
+    latitud: { type: String, required: false, default: '10.4880' },  // Coordenada base inicial
+    longitud: { type: String, required: false, default: '-66.8580' },
     telefono: { type: String, required: false },
     redssociales: { type: Array, required: false },
     img: { type: String, required: false },

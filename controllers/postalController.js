@@ -147,19 +147,22 @@ const obtenerPostalesPorLocal = async (req, res) => {
     const localId = req.params.localId;
 
     try {
-        // 2. Buscamos en la base de datos todos los deliveries de ese local
-        // .populate() es opcional, por si quieres traer los datos del usuario que lo creó
-        const postalesDB = await Postal.find({ local: localId });
+        // 2. Buscamos las tarifas en la base de datos aplicando un ordenamiento automático
+        // 🚀 EL TRUCO DE ORDENAMIENTO: .sort({ distancia: 1 }) o .sort({ kms: 1 })
+        // Ordena las tarifas de menor a mayor distancia (ej: de 0km a 10km) para que el .find() de Angular funcione perfecto.
+        const postalesDB = await Postal.find({ local: localId }).sort({ distancia: 1, kms: 1 });
 
-        // 3. Respondemos con la lista (si está vacía, manda un arreglo vacío [])
-        res.json({
+        // 3. 🚨 CONTROL DE MEMORIA RENDER: Añadimos 'return' explícito para cerrar la conexión de red de inmediato
+        return res.json({
             ok: true,
             postales: postalesDB
         });
 
     } catch (error) {
         console.error('Error al obtener postales por local:', error);
-        res.status(500).json({
+        
+        // 🚨 CONTROL DE MEMORIA EN ERRORES: 'return' para liberar la RAM si el servidor crashea
+        return res.status(500).json({
             ok: false,
             msg: 'Error interno en el servidor, hable con el administrador.'
         });

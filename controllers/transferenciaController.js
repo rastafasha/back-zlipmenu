@@ -2,6 +2,9 @@ const { response } = require('express');
 const Transferencia = require('../models/transferencia');
 const Congeneral = require('../models/congeneral');
 const ventaController = require('./ventaController');
+const Pedido = require('../models/pedidomenu');
+const Tienda = require('../models/tienda');
+const Direccion = require('../models/direccion');
 const Notificacion = require('../models/notificacion');
 const Usuario = require('../models/usuario');
 const PushSubscription = require('../models/push-subscription');
@@ -80,6 +83,33 @@ const crearTransferencia = async (req, res) => {
     try {
         const transferenciaDB = await transferencia.save();
         const id = transferenciaDB._id;
+
+        // =========================================================================
+        // 🚀 ENLACE LOGÍSTICO REPARADO: VINCULACIÓN DE DIRECCIÓN AL PEDIDO
+        // =========================================================================
+        // req.body.pedido contiene el ID del documento 'pedidomenu' que se acaba de pagar
+        if (req.body.pedido) {
+            
+            // 🧠 PASO 1: Buscamos la ubicación más reciente calculada por el GPS para este cliente
+            const ultimaDireccionUsuario = await Direccion.findOne({ user: uid }).sort({ createdAt: -1 });
+
+            let datosAActualizar = {
+                status: 'NEW' // Al recibir el pago, el pedido se activa para el ERP
+            };
+
+            // 🛵 PASO 2: Si el satélite guardó una dirección, se la enlazamos de una vez al pedido
+            if (ultimaDireccionUsuario) {
+                datosAActualizar.direccion = ultimaDireccionUsuario._id; // Al campo ref: 'direccion'
+                datosAActualizar.deliveryAddres = ultimaDireccionUsuario.direccion; // Copia en texto de respaldo
+                console.log(`📌 Dirección ID [${ultimaDireccionUsuario._id}] enlazada al Pedido ID [${req.body.pedido}]`);
+            }
+
+            // 📝 PASO 3: Actualizamos la colección definitiva 'pedidomenus'
+            // Revisa si tu modelo importado se llama Pedido o PedidoMenu en tu backend
+            await Pedido.findByIdAndUpdate(req.body.pedido, datosAActualizar, { new: true });
+            console.log(`⚡ PedidoMenu [${req.body.pedido}] actualizado y listo para el chofer.`);
+        }
+        // =========================================================================
 
         // =========================================================================
         // 🚀 NUEVA LÓGICA REPARADA: FILTRADO EXACTO POR TIENDA (Igual que en pedidos)
