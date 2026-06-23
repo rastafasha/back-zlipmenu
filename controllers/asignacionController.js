@@ -238,7 +238,7 @@ const borrarAsignacion = async(req, res) => {
                 msg: 'asignacion no encontrado por el id'
             });
         }
-
+        await Pedido.findByIdAndUpdate(req.body.pedido, { asignado: false });
         await asignacion.findByIdAndDelete(id);
 
         res.json({
