@@ -85,31 +85,42 @@ const crearTransferencia = async (req, res) => {
         const id = transferenciaDB._id;
 
         // =========================================================================
-        // 🚀 ENLACE LOGÍSTICO REPARADO: VINCULACIÓN DE DIRECCIÓN AL PEDIDO
+        // 🚀 ENLACE LOGÍSTICO CORREGIDO: VINCULACIÓN DE DIRECCIÓN SELECCIONADA
         // =========================================================================
-        // req.body.pedido contiene el ID del documento 'pedidomenu' que se acaba de pagar
+        // req.body.pedido contiene el ID del pedido pagado
+        // req.body.direccion SELECCIONADA debe venir desde el frontend
         if (req.body.pedido) {
-            
-            // 🧠 PASO 1: Buscamos la ubicación más reciente calculada por el GPS para este cliente
-            const ultimaDireccionUsuario = await Direccion.findOne({ user: uid }).sort({ createdAt: -1 });
 
             let datosAActualizar = {
-                status: 'NEW' // Al recibir el pago, el pedido se activa para el ERP
+                status: 'NEW' // Al recibir el pago, el pedido se activa
             };
 
-            // 🛵 PASO 2: Si el satélite guardó una dirección, se la enlazamos de una vez al pedido
-            if (ultimaDireccionUsuario) {
-                datosAActualizar.direccion = ultimaDireccionUsuario._id; // Al campo ref: 'direccion'
-                datosAActualizar.deliveryAddres = ultimaDireccionUsuario.direccion; // Copia en texto de respaldo
-                console.log(`📌 Dirección ID [${ultimaDireccionUsuario._id}] enlazada al Pedido ID [${req.body.pedido}]`);
+            // 🛵 PASO 1: Validamos si el frontend envió una dirección específica para este pedido
+            if (req.body.direccion) {
+
+                // Buscamos los datos completos de esa dirección específica seleccionada
+                const direccionSeleccionada = await Direccion.findById(req.body.direccion);
+
+                if (direccionSeleccionada) {
+                    datosAActualizar.direccion = direccionSeleccionada._id; // ID de referencia
+                    datosAActualizar.deliveryAddres = direccionSeleccionada.direccion; // Copia en texto de respaldo
+                    console.log(`📌 Dirección SELECCIONADA ID [${direccionSeleccionada._id}] enlazada al Pedido ID [${req.body.pedido}]`);
+                } else {
+                    console.log(`⚠️ Se envió un ID de dirección [${req.body.direccion}] pero no se encontró en la BD.`);
+                }
+
+            } else {
+                // En caso de que no envíen dirección, dejamos el campo como null (Retiro en tienda / Pick up)
+                datosAActualizar.direccion = null;
+                console.log(`📦 El pedido ID [${req.body.pedido}] no especificó dirección. Se asume Retiro en Tienda.`);
             }
 
-            // 📝 PASO 3: Actualizamos la colección definitiva 'pedidomenus'
-            // Revisa si tu modelo importado se llama Pedido o PedidoMenu en tu backend
+            // 📝 PASO 2: Actualizamos la colección definitiva
             await Pedido.findByIdAndUpdate(req.body.pedido, datosAActualizar, { new: true });
-            console.log(`⚡ PedidoMenu [${req.body.pedido}] actualizado y listo para el chofer.`);
+            console.log(`⚡ PedidoMenu [${req.body.pedido}] actualizado con la dirección correcta.`);
         }
         // =========================================================================
+
 
         // =========================================================================
         // 🚀 NUEVA LÓGICA REPARADA: FILTRADO EXACTO POR TIENDA (Igual que en pedidos)
@@ -385,7 +396,7 @@ const updateStatus = async (req, res) => {
                 msg: 'Intento de estafa detectado. Pedido y transferencia eliminados del sistema.',
                 motivo: observaciones || 'No especificado'
             });
-            
+
             // 🛑 Detenemos la ejecución aquí para que no intente crear la venta de abajo
         }
 

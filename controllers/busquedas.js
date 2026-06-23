@@ -13,31 +13,36 @@ const PagoEfectivo = require('../models/pago.efectivo');
 const Categoria = require('../models/categoria');
 const Promocion = require('../models/promocion');
 const Reservacion = require('../models/reservacion');
+const Presupuesto = require('../models/presupuesto');
 
-const getTodo = async(req, res = response) => {
+const getTodo = async (req, res = response) => {
 
     const busqueda = req.params.busqueda;
     const regex = new RegExp(busqueda, 'i');
 
-    const [usuarios, marcas, blogs, pages, productos, 
-        sliders, cursos, tiendas,  
+    const [usuarios, marcas, blogs, pages, productos,
+        sliders,  tiendas,
         transferencias, pagoecheques, pagoefectivos, categorias,
-        promocions, reservaciones,
-        ] = await Promise.all([
+        promocions, reservaciones, presupuestos
+    ] = await Promise.all([
         Usuario.find({ first_name: regex }),
         Marca.find({ nombre: regex }),
         Blog.find({ titulo: regex }),
         Page.find({ titulo: regex }),
-        Producto.find({ $or: [{titulo: regex}, {sku: regex}] }),
+        Producto.find({ $or: [{ titulo: regex }, { sku: regex }] }),
         Slider.find({ first_title: regex }),
-        Curso.find({ nombre: regex }),
         Tienda.find({ nombre: regex }),
-        Transferencia.find({ $or: [{referencia: regex}, {fecha: regex}, {amount: regex}, {bankName: regex}]}),
-        PagoCheque.find({ $or: [{ncheck: regex}, {name_person: regex}, {amount: regex}] }),
-        PagoEfectivo.find({ $or: [{name_person: regex}, {amount: regex}] }),
+        Transferencia.find({ $or: [{ referencia: regex }, { fecha: regex }, { amount: regex }, { bankName: regex }] }),
+        PagoCheque.find({ $or: [{ ncheck: regex }, { name_person: regex }, { amount: regex }] }),
+        PagoEfectivo.find({ $or: [{ name_person: regex }, { amount: regex }] }),
         Categoria.find({ nombre: regex }),
         Promocion.find({ producto_title: regex }),
-        Reservacion.find({ $or: [ {first_name: regex}, {last_name: regex}]}),
+        Reservacion.find({ $or: [{ first_name: regex }, { last_name: regex }] }),
+        Presupuesto.find({
+            $or: [{ titulo: regex }, { amount: regex }, { status: regex },
+            { tienda: regex }, { tienda: regex }
+            ]
+        }).populate('usuario'),
     ]);
 
     res.json({
@@ -48,7 +53,6 @@ const getTodo = async(req, res = response) => {
         pages,
         productos,
         sliders,
-        cursos,
         tiendas,
         transferencias,
         pagoecheques,
@@ -56,11 +60,12 @@ const getTodo = async(req, res = response) => {
         categorias,
         promocions,
         reservaciones,
+        presupuestos
 
     });
 }
 
-const getDocumentosColeccion = async(req, res = response) => {
+const getDocumentosColeccion = async (req, res = response) => {
 
     const tabla = req.params.tabla;
     const busqueda = req.params.busqueda;
@@ -91,39 +96,63 @@ const getDocumentosColeccion = async(req, res = response) => {
             break;
 
         case 'productos':
-            data = await Producto.find({ $or: [{titulo: regex}, {sku: regex}] });
+            data = await Producto.find({ $or: [{ titulo: regex }, { sku: regex }] });
             break;
 
-        case 'cursos':
-            data = await Curso.find({ nombre: regex });
-            break;
 
         case 'tiendas':
             data = await Tienda.find({ nombre: regex });
             break;
 
         case 'trasnferencias':
-            data = await Transferencia.find({ $or: [{referencia: regex}, {fecha: regex}, {amount: regex}, {bankName: regex}]});
+            data = await Transferencia.find({ $or: [{ referencia: regex }, { fecha: regex }, { amount: regex }, { bankName: regex }] });
             break;
 
         case 'pagoecheques':
-            data = await PagoCheque.find({ $or: [{ncheck: regex}, {name_person: regex}, {amount: regex}]});
+            data = await PagoCheque.find({ $or: [{ ncheck: regex }, { name_person: regex }, { amount: regex }] });
             break;
 
         case 'pagoefectivos':
-            data = await PagoEfectivo.find({ $or: [{name_person: regex}, {amount: regex}] });
+            data = await PagoEfectivo.find({ $or: [{ name_person: regex }, { amount: regex }] });
             break;
 
         case 'categorias':
-            data = await Categoria.find({ nombre: regex, subcategorias:regex });
+            data = await Categoria.find({ nombre: regex, subcategorias: regex });
             break;
-            
+
         case 'promocions':
             data = await Promocion.find({ producto_title: regex });
             break;
-        
+
         case 'reservaciones':
-            data = await Reservacion.find({ $or: [ {first_name: regex}, {last_name: regex}]});
+            data = await Reservacion.find({ $or: [{ first_name: regex }, { last_name: regex }] });
+            break;
+
+        case 'presupuestos':
+            // 1. Campos de texto (referencia, banco, status)
+            // Si 'referencia' es String en la DB, el regex funciona para "A123" o "123"
+            let queryPresupuesto = {
+                $or: [
+                    { titulo: regex },
+                    { status: regex }
+                ]
+            };
+
+            // 2. Solo si es número, buscamos en el monto (amount)
+            if (esNumero) {
+                queryPresupuesto.$or.push({ amount: Number(busqueda) });
+            }
+
+            // 3. Búsqueda por CLIENTE (Relación con Usuario)
+            const usuariosEncontradosPres = await Usuario.find({ username: regex });
+            if (usuariosEncontradosPres.length > 0) {
+                const idsUsuarios = usuariosEncontradosPres.map(u => u._id);
+                queryPresupuesto.$or.push({ cliente: { $in: idsUsuarios } });
+            }
+
+            // 4. Ejecutar la búsqueda final
+            data = await Presupuesto.find(queryPresupuesto)
+                .populate('cliente', 'username email');
             break;
 
 

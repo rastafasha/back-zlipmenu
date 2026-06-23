@@ -8,6 +8,7 @@ const PedidoMenuSchema = Schema({
     delivery: { type: String, require: false },
     costodelivery: { type: String, require: false },
     deliveryAddres: { type: String, require: false },
+    asignado: { type: Boolean, require: true },
     tienda: { type: Schema.Types.ObjectId, ref: 'tienda', require: true },
     direccion: {  type: Schema.Types.ObjectId, ref: 'direccion', require: false },
     status: { type: String, required: false, default: 'PENDING' },

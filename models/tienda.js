@@ -63,6 +63,7 @@ var TiendaSchema = Schema({
     categoria: { type: Schema.ObjectId, ref: 'categoria' },
     user: { type: Schema.ObjectId, ref: 'user' },
     productos: { type: Schema.ObjectId, ref: 'productos' },
+    has_cotizacion: { type: Boolean, required: true, default: false },
     has_reservacion: { type: Boolean, required: true, default: false },
     capacidad_por_hora:{type: Number, required: false },
     isFeatured: { type: Boolean, required: false },

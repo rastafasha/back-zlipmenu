@@ -129,6 +129,7 @@ const startServer = async () => {
     app.use('/api/favoritos', require('./routes/favorito'));
 
     app.use('/api/reservacion', require('./routes/reservacion'));
+    app.use('/api/presupuestos', require('./routes/presupuestos'));
 
     //pagos
     app.use('/api/tipopago', require('./routes/tipopago'));

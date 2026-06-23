@@ -12,21 +12,25 @@ const getDireccions = async(req, res) => {
 };
 
 const getDireccion = (req, res) => {
+    // 1. Obtenemos el ID de los parámetros de la ruta
+    const id = req.params.id; 
 
-    var id = req.params['id'];
-    Direccion.findById({ _id: id }, (err, data_direccion) => {
-        if (!err) {
-            if (data_direccion) {
-                res.status(200).send({ direccion: data_direccion });
-            } else {
-                res.status(500).send({ error: err });
-            }
-        } else {
-            res.status(500).send({ error: err });
+    // 2. CORRECCIÓN: findById recibe el ID directo, NO un objeto con {_id: id}
+    Direccion.findById(id, (err, data_direccion) => {
+        
+        // Si ocurre un error real de base de datos (ej. ID mal estructurado)
+        if (err) {
+            return res.status(500).send({ ok: false, error: 'Error en el servidor', detalle: err });
         }
+
+        // Si la consulta fue exitosa pero el ID no existe en la BD
+        if (!data_direccion) {
+            return res.status(404).send({ ok: false, mensaje: 'La dirección no existe' });
+        }
+
+        // Si se encontró la dirección perfectamente
+        return res.status(200).send({ ok: true, direccion: data_direccion });
     });
-
-
 };
 
 const crearDireccion = async(req, res) => {

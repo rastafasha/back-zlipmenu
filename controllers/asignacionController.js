@@ -1,6 +1,6 @@
 const { response } = require('express');
 const Tienda = require('../models/tienda');
-const Venta = require('../models/venta');
+const Pedido = require('../models/pedidomenu');
 const Driver = require('../models/driver');
 const Asignacion = require('../models/asignardelivery');
 
@@ -8,7 +8,7 @@ const Asignacion = require('../models/asignardelivery');
 
 const crearAsignacion = async(req, res) => {
 
-    const { driver, status, tienda, venta } = req.body;
+    const { driver, status, tienda, pedido } = req.body;
 
     const body = req.body;
     try {
@@ -16,7 +16,7 @@ const crearAsignacion = async(req, res) => {
         const existeDriver = await Driver.findById(body.driver);
        
         const existeTienda = await Tienda.findById(body.tienda);
-        const existeVenta = await Venta.findById(body.venta);
+        const existePedido = await Pedido.findById(body.pedido);
 
         if (!existeDriver) {
             return res.status(400).json({
@@ -30,10 +30,10 @@ const crearAsignacion = async(req, res) => {
                 msg: 'La tienda no existe'
             });
         }
-        if (!existeVenta) {
+        if (!existePedido) {
             return res.status(400).json({
                 ok: false,
-                msg: 'La venta no existe'
+                msg: 'el pedido no existe'
             });
         }
 
@@ -41,9 +41,11 @@ const crearAsignacion = async(req, res) => {
         const asignacion = new Asignacion({
             driver: body.driver,
             tienda: body.tienda,
-            venta: body.venta,
+            pedido: body.pedido,
             status: body.status,
         });
+
+        await Pedido.findByIdAndUpdate(req.body.pedido, { asignado: true });
 
         //guardar asignacion
         await asignacion.save();
@@ -196,7 +198,7 @@ const getAsignacion = async(req, res) => {
 
     Asignacion.findById(id)
         .populate('driver')
-        .populate('venta')
+        .populate('pedido')
         .populate('tienda')
         .exec((err, asignacion) => {
             if (err) {
@@ -272,11 +274,11 @@ const listarAsignacionPorUser = async(req, res) => {
     var id = req.params['id'];
     try {
         // First find all ventas for this user
-        const ventas = await Venta.find({ user: id });
-        const ventaIds = ventas.map(v => v._id);
+        const pedidos = await Pedido.find({ user: id });
+        const pedidoIds = pedidos.map(v => v._id);
         
         // Then find assignments for these ventas
-        Asignacion.find({ venta: { $in: ventaIds } }, (err, data_asignacion) => {
+        Asignacion.find({ venta: { $in: pedidoIds } }, (err, data_asignacion) => {
             if (!err) {
                 if (data_asignacion) {
                     res.status(200).send({ asignacions: data_asignacion });

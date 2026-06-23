@@ -105,21 +105,27 @@ const getTClients = async (req, res) => {
 };
 
 const getTiendaUsers = async (req, res) => {
-    var local = req.params['local'];
+    // 1. Obtenemos el parámetro de la ruta de forma segura
+    const local = req.params.local;
 
-    // Use find() to get all users associated with the local ID
-    Usuario.find({ local: local }).exec((err, tiendauserslocal) => {
-        if (err) {
-            res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
+    try {
+        // 2. Usamos await en lugar de callbacks pasados por parámetro
+        const tiendauserslocal = await Usuario.find({ local: local }).lean();
+
+        // 3. Verificamos si encontramos usuarios
+        if (tiendauserslocal && tiendauserslocal.length > 0) {
+            return res.status(200).json({ usuarios: tiendauserslocal });
         } else {
-            if (tiendauserslocal && tiendauserslocal.length > 0) {
-                res.status(200).send({ local: tiendauserslocal });
-            } else {
-                res.status(404).send({ message: 'No se encontró ningun dato en esta sección.' });
-            }
+            return res.status(404).json({ message: 'No se encontró ningún dato en esta sección.' });
         }
-    });
+
+    } catch (error) {
+        // 4. Cualquier error de Mongoose caerá aquí de forma segura sin tumbar el servidor
+        console.error('Error en getTiendaUsers:', error);
+        return res.status(500).json({ message: 'Ocurrió un error en el servidor.' });
+    }
 };
+
 
 const getTiendaLocalEmployees = async (req, res) => {
     var local = req.params['local'];

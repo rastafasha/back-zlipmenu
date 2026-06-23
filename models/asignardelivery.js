@@ -7,9 +7,9 @@ const AsignarDeliverySchema = Schema({
         ref: 'driver',
         require: true
     },
-    venta: {
+    pedido: {
         type: Schema.Types.ObjectId,
-        ref: 'venta',
+        ref: 'pedidomenu',
         require: true
     },
     tienda: {
