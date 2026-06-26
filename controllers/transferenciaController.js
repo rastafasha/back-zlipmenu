@@ -439,6 +439,7 @@ const updateStatus = async (req, res) => {
 
                     // 🟢 SOLUCIÓN 2: Enviamos el arreglo con los productos mapeados
                     detalles: detallesVenta,
+                    pedido: transferencia.pedido?._id || transferencia.pedido,
 
                     precio_envio: pedidoObjeto?.precio_envio || 0,
                     tipo_envio: pedidoObjeto?.tipo_envio || 'Local',

@@ -9,6 +9,7 @@ var VentaSchema = Schema({
     info_cupon: { type: String },
     idtransaccion: { type: String },
     metodo_pago: { type: String, ref: 'paymentmethod' },
+    pedido: { type: String, ref: 'pedidomenus' },
 
     tracking_number: { type: String },
     tipo_envio: { type: String, required: true },

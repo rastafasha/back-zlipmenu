@@ -10,6 +10,7 @@
     actualizarAsignacion,
     getAsignacions,
     getAsignacionsTienda,
+    getAsignacionsPedido,
     getAsignacion,
     borrarAsignacion,
     listarAsignacionPorDriver,
@@ -29,6 +30,7 @@
  router.get('/driver/:id', listarAsignacionPorDriver);
  router.get('/user/:id', listarAsignacionPorUser);
  router.get('/tienda/:tiendaid', getAsignacionsTienda);
+ router.get('/pedido/:pedidoid', getAsignacionsPedido);
 
  router.get('/activar/:id',  activar);
  router.get('/entregado/:id',  entregado);

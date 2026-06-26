@@ -264,6 +264,27 @@ const getAsignacionsTienda = async (req, res) => {
         res.status(500).json({ ok: false, msg: 'Error al obtener asignaciones' });
     }
 };
+const getAsignacionsPedido = async (req, res) => {
+    try {
+        const pedidoid = req.params.pedidoid;
+
+        const [asignacions, total] = await Promise.all([
+            Asignacion.find({ pedido: pedidoid })
+                // .populate('driver')
+                // .populate('tienda')
+                .lean(),
+            Asignacion.countDocuments({ pedido: pedidoid  })
+        ]);
+
+        res.json({
+            ok: true,
+            asignacions,
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ ok: false, msg: 'Error al obtener asignaciones' });
+    }
+};
 
 const getAsignacion = async (req, res) => {
 
@@ -509,6 +530,7 @@ module.exports = {
     listarAsignacionPorDriver,
     listarAsignacionPorUser,
     getAsignacionsTienda,
+    getAsignacionsPedido,
     entregado,
     activar,
     recibido,
