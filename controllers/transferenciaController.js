@@ -513,7 +513,7 @@ const updateStatus = async (req, res) => {
 
             if (idPedidoAprobado) {
                 // Activamos el pedido para procesarlo
-                await Pedido.findByIdAndUpdate(idPedidoAprobado, { status: 'INPROCESS' }, { new: true });
+                await Pedido.findByIdAndUpdate(idPedidoAprobado, {verificado:true});
             }
 
             await nuevaNotificacionUsuario.save();
