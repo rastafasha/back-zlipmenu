@@ -83,6 +83,7 @@ function registro(req, res) {
     venta.info_cupon = data.info_cupon;
     venta.idtransaccion = data.idtransaccion;
     venta.metodo_pago = data.metodo_pago;
+    venta.pedido = data.pedido;
 
     venta.precio_envio = data.precio_envio;
     venta.tipo_envio = data.tipo_envio;

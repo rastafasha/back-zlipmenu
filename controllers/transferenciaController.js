@@ -2,7 +2,7 @@ const { response } = require('express');
 const Transferencia = require('../models/transferencia');
 const Congeneral = require('../models/congeneral');
 const ventaController = require('./ventaController');
-const Pedido = require('../models/pedidomenu');
+const PedidoMenu = require('../models/pedidomenu');
 const Tienda = require('../models/tienda');
 const Direccion = require('../models/direccion');
 const Usuario = require('../models/usuario');
@@ -116,7 +116,7 @@ const crearTransferencia = async (req, res) => {
             }
 
             // 📝 PASO 2: Actualizamos la colección definitiva
-            await Pedido.findByIdAndUpdate(req.body.pedido, datosAActualizar, { new: true });
+            await PedidoMenu.findByIdAndUpdate(req.body.pedido, datosAActualizar, { new: true });
             console.log(`⚡ PedidoMenu [${req.body.pedido}] actualizado con la dirección correcta.`);
         }
         // =========================================================================
@@ -343,6 +343,9 @@ const updateStatus = async (req, res) => {
     const uid = req.uid; // ID del administrador que cambia el estado
     const { status, observaciones } = req.body;
 
+    // 🟢 Variable globalizada al inicio para evitar el ReferenceError
+    const estadoNormalizado = status ? status.toLowerCase() : '';
+
     try {
         // 1. Buscamos la transferencia original e incluimos el pedido
         const transferencia = await Transferencia.findById(id).populate('pedido');
@@ -359,8 +362,6 @@ const updateStatus = async (req, res) => {
         // Actualizar campos en la BD
         Object.assign(transferencia, req.body);
         transferencia.usuario = uid; // Aquí 'usuario' pasa a ser el admin validador
-
-        // 🟢 Asignamos las observaciones al documento (asume que tu modelo Transferencia tiene este campo)
         transferencia.observaciones = observaciones || '';
 
         if (status !== undefined && status !== antiguoEstado) {
@@ -370,47 +371,79 @@ const updateStatus = async (req, res) => {
         const transferenciaActualizado = await transferencia.save();
 
         // =========================================================================
-        // 🗑️ LÓGICA ANTI-ESTAFA: ELIMINACIÓN AUTOMÁTICA SI EL PAGO ES RECHAZADO
+        // 🗑️ LÓGICA ANTI-ESTAFA: NOTIFICAR Y ELIMINAR SI EL PAGO ES RECHAZADO
         // =========================================================================
-
         if (estadoNormalizado === 'rechazado' || estadoNormalizado === 'no' || status === 'false') {
             console.log(`❌ Pago rechazado por el administrador. Motivo: ${observaciones}`);
 
-            // Extraemos el ID del pedido amarrado a esta transferencia
-            // Usamos un condicional por si viene poblado como objeto o viene el ID directo como String
-            const idPedidoReal = transferencia.pedido?._id || transferencia.pedido;
+            // 🔔 NOTIFICACIÓN DE RECHAZO (Antes de borrar los registros)
+            if (status !== antiguoEstado) {
+                const titulo = 'Pago Rechazado ❌';
+                const mensaje = `Hubo un problema con tu transferencia. Motivo: ${observaciones || 'Datos incorrectos'}`;
+                const urlRedireccion = `/mis-pagos`;
 
+                // Guardar en historial de BD
+                const nuevaNotificacionUsuario = new Notificacion({
+                    usuario: clienteId,
+                    local: transferencia.local,
+                    titulo: titulo,
+                    mensaje: mensaje,
+                    tipo: 'PAGO_RECHAZADO',
+                    referenciaId: transferencia._id,
+                    leido: false
+                });
+                await nuevaNotificacionUsuario.save();
+
+                // Enviar Push (Failsafe incluido)
+                const subs = await PushSubscription.find({ usuario: clienteId });
+                if (subs.length > 0) {
+                    subs.forEach(s => {
+                        sendNotification(s.subscription, titulo, mensaje, urlRedireccion, clienteId, 'PAGO_RECHAZADO', transferencia._id)
+                            .catch(err => {
+                                if (err.statusCode === 410 || err.statusCode === 404) {
+                                    s.deleteOne().catch(e => console.log('Error eliminando sub', e));
+                                }
+                            });
+                    });
+                } else {
+                    await sendNotification(null, titulo, mensaje, urlRedireccion, clienteId, 'PAGO_RECHAZADO', transferencia._id).catch(() => { });
+                }
+            }
+
+            // Proceder con el borrado sistemático
+            const idPedidoReal = transferencia.pedido?._id || transferencia.pedido;
             if (idPedidoReal) {
-                // 1. Borramos el pedido de la colección 'pedidomenus' para limpiar el ERP de la cocina
                 await PedidoMenu.findByIdAndDelete(idPedidoReal);
                 console.log(`🗑️ Pedido basura ${idPedidoReal} eliminado de MongoDB.`);
             }
 
-            // 2. Borramos la transferencia falsa de la colección 'transferencias' para no dejar basura financiera
             await Transferencia.findByIdAndDelete(id);
             console.log(`🗑️ Transferencia fraudulenta ${id} eliminada de MongoDB.`);
 
-            // 3. Respondemos con éxito avisando al panel que la orden fue destruida
             return res.json({
                 ok: true,
                 msg: 'Intento de estafa detectado. Pedido y transferencia eliminados del sistema.',
                 motivo: observaciones || 'No especificado'
             });
-
-            // 🛑 Detenemos la ejecución aquí para que no intente crear la venta de abajo
         }
 
         // =========================================================================
         // 🚀 NUEVA LÓGICA: GENERAR VENTA AUTOMÁTICA AL APROBAR
         // =========================================================================
-        const estadoNormalizado = status ? status.toLowerCase() : '';
-        if (estadoNormalizado === 'aprobado' || estadoNormalizado === 'aproved' || status === 'ok') {
+        const esAprobado = estadoNormalizado === 'aprobado' || estadoNormalizado === 'aproved' || status === 'ok';
 
-            // 1. Extraemos la lista de forma segura sin importar si 'pedido' viene como Objeto o ID directo
+        if (esAprobado) {
             const pedidoObjeto = transferencia.pedido;
             const listaProductos = (pedidoObjeto && pedidoObjeto.pedidoList) ? pedidoObjeto.pedidoList : [];
 
-            // 2. Mapeamos las pizzas al formato compatible con tu bucle
+            // Extraemos limpiamente el ID del pedido para pasarlo a la venta
+            const idPedidoLimpio = transferencia.pedido?._id || transferencia.pedido._id;
+
+            if (idPedidoLimpio) {
+                await PedidoMenu.findByIdAndUpdate(idPedidoLimpio, { verificado: true }, { status: 'PENDING' }, { new: true });
+                console.log(`✅ Pedido ${idPedidoLimpio} marcado como verificado.`);
+            }
+
             const detallesVenta = listaProductos.map(item => ({
                 producto: item._id,
                 cantidad: item.cantidad,
@@ -420,7 +453,6 @@ const updateStatus = async (req, res) => {
                 selector_elegido: item.selector_elegido,
             }));
 
-            // 3. Extraemos de forma limpia el ID del método de pago si viene como objeto
             const idMetodoPago = (transferencia.metodo_pago && transferencia.metodo_pago._id)
                 ? transferencia.metodo_pago._id
                 : transferencia.metodo_pago;
@@ -430,16 +462,13 @@ const updateStatus = async (req, res) => {
                     user: clienteId,
                     local: transferencia.local,
                     total_pagado: transferencia.amount,
-
-                    // 🟢 SOLUCIÓN 1: Enviamos solo la cadena del ID limpio del método de pago
                     metodo_pago: idMetodoPago,
-
                     referencia: transferencia.referencia,
                     idtransaccion: transferencia.referencia,
-
-                    // 🟢 SOLUCIÓN 2: Enviamos el arreglo con los productos mapeados
                     detalles: detallesVenta,
-                    pedido: transferencia.pedido?._id || transferencia.pedido,
+
+                    // 🟢 AQUÍ ENLAZAMOS EL PEDIDO CON LA VENTA
+                    pedido: idPedidoLimpio,
 
                     precio_envio: pedidoObjeto?.precio_envio || 0,
                     tipo_envio: pedidoObjeto?.tipo_envio || 'Local',
@@ -453,105 +482,67 @@ const updateStatus = async (req, res) => {
             };
 
             const mockRes = {
-                status: function (statusCode) {
-                    this.statusCode = statusCode;
-                    return this;
-                },
-                send: function (data) {
-                    this.responseData = data;
-                    return this;
-                },
-                json: function (data) {
-                    this.responseData = data;
-                    return this;
-                }
+                status: function (statusCode) { this.statusCode = statusCode; return this; },
+                send: function (data) { this.responseData = data; return this; },
+                json: function (data) { this.responseData = data; return this; }
             };
 
             try {
-                // Ejecutamos tu controlador pasándole el mock limpio
                 ventaController.registro(mockReq, mockRes);
-
                 setTimeout(() => {
                     console.log('Resultado real tras limpiar tipos:', mockRes.responseData);
-                }, 600); // Retraso prudencial para asimilar el save de Mongoose
-
+                }, 600);
             } catch (errorVenta) {
                 console.error('Error crítico al ejecutar ventaController.registro:', errorVenta);
             }
         }
 
         // =========================================================================
+        // 🚀 DISPARO CENTRALIZADO DE NOTIFICACIÓN HÍBRIDA (SOLO PARA APROBADOS AHORA)
+        // =========================================================================
+        if (status !== undefined && status !== antiguoEstado && esAprobado) {
 
-        // 🚀 DISPARO CENTRALIZADO DE NOTIFICACIÓN HYBRIDA
-        if (status !== undefined && status !== antiguoEstado) {
-
-            const esAprobado = estadoNormalizado === 'aprobado' || estadoNormalizado === 'aproved' || status === 'ok';
-
-            let tipoNotificacion = esAprobado ? 'PAGO_APROBADO' : 'PAGO_RECHAZADO';
-            let titulo = esAprobado ? '¡Pago Aprobado! 🎉' : 'Pago Rechazado ❌';
-            let mensaje = esAprobado
-                ? 'Tu transferencia ha sido verificada con éxito.'
-                : `Hubo un problema con tu transferencia. Motivo: ${req.body.observaciones || 'Datos incorrectos'}`;
-
+            const titulo = '¡Pago Aprobado! 🎉';
+            const mensaje = 'Tu transferencia ha sido verificada con éxito.';
             const urlRedireccion = `/mis-pagos`;
 
-            // =========================================================================
-            // 📝 PASO 1: GUARDAR EN LA BASE DE DATOS PARA EL HISTORIAL DEL CLIENTE
-            // =========================================================================
-            // Al definir local: null garantizamos que no aparezca en el historial del comercio
+            // Guardar en la base de datos para el cliente
             const nuevaNotificacionUsuario = new Notificacion({
                 usuario: clienteId,
                 local: transferencia.local,
                 titulo: titulo,
                 mensaje: mensaje,
-                tipo: tipoNotificacion,
+                tipo: 'PAGO_APROBADO',
                 referenciaId: transferencia._id,
                 leido: false
             });
-            // si el pago es verficado o true, activamos el pedido
-            const idPedidoAprobado = transferencia.pedido?._id || transferencia.pedido;
 
+            const idPedidoAprobado = transferencia.pedido?._id || transferencia.pedido;
             if (idPedidoAprobado) {
-                // Activamos el pedido para procesarlo
-                await Pedido.findByIdAndUpdate(idPedidoAprobado, {verificado:true});
+                // 🟢 OJO: Aquí estás usando el modelo 'Pedido', asegúrate de que esté importado arriba
+                await PedidoMenu.findByIdAndUpdate(idPedidoAprobado, { verificado: true }, { new: true });
             }
 
             await nuevaNotificacionUsuario.save();
-            console.log(`📝 Historial de notificación [${tipoNotificacion}] guardado para el cliente:`, clienteId);
-            // =========================================================================
+            console.log(`📝 Historial de notificación [PAGO_APROBADO] guardado para el cliente:`, clienteId);
 
-            // Buscamos los dispositivos Push usando el clienteId correcto que guardamos arriba
+            // Envío Push
             const subs = await PushSubscription.find({ usuario: clienteId });
-
             if (subs.length > 0) {
                 subs.forEach(s => {
-                    sendNotification(
-                        s.subscription,
-                        titulo,
-                        mensaje,
-                        urlRedireccion,
-                        clienteId,
-                        tipoNotificacion,
-                        transferencia._id
-                    ).catch(err => {
-                        if (err.statusCode === 410 || err.statusCode === 404) {
-                            s.deleteOne().catch(e => console.log('Error eliminando sub', e));
-                        }
-                    });
+                    sendNotification(s.subscription, titulo, mensaje, urlRedireccion, clienteId, 'PAGO_APROBADO', transferencia._id)
+                        .catch(err => {
+                            if (err.statusCode === 410 || err.statusCode === 404) {
+                                s.deleteOne().catch(e => console.log('Error eliminando sub', e));
+                            }
+                        });
                 });
             } else {
-                await sendNotification(
-                    null,
-                    titulo,
-                    mensaje,
-                    urlRedireccion,
-                    clienteId,
-                    tipoNotificacion,
-                    transferencia._id
-                );
+                await sendNotification(null, titulo, mensaje, urlRedireccion, clienteId, 'PAGO_APROBADO', transferencia._id).catch(() => { });
             }
         }
 
+        // Respuesta final estándar (Para casos aprobados o actualizaciones comunes)
         res.json({
             ok: true,
             transferenciaActualizado
@@ -564,7 +555,8 @@ const updateStatus = async (req, res) => {
             msg: 'Error hable con el admin'
         });
     }
-}
+};
+
 
 function sendEmailAdmin(user, id) {
     const texto = `Hola! El usuario ${user} ha realizado una compra con transferencia bancaria cuyo id es ${id}`;

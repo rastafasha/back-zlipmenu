@@ -2,7 +2,7 @@ const { response } = require('express');
 const mongoose = require('mongoose');
 const Tienda = require('../models/tienda');
 const Usuario = require('../models/usuario');
-const Pedido = require('../models/pedidomenu');
+const PedidoMenu = require('../models/pedidomenu');
 const Notificacion = require('../models/notificacion');
 const PushSubscription = require('../models/push-subscription');
 const { sendNotification } = require('../helpers/notificaciones');
@@ -34,7 +34,7 @@ const crearPedidoMenu = async (req, res) => {
         // Si es POS_DIRECTO nace como 'NEW' para tu ERP. Si no, usa el que mande Angular por defecto.
         const estatusInicial = existeTienda.tipoFlujo === 'POS_DIRECTO' ? 'NEW' : (body.status || 'NEW');
 
-        const pedido = new Pedido({
+        const pedido = new PedidoMenu({
             user: body.user,
             pedidoList: body.pedidoList,
             tienda: body.tienda,
@@ -139,7 +139,7 @@ const actualizarPedidoMenu = async (req, res) => {
 
     try {
 
-        const pedido = await Pedido.findById(id);
+        const pedido = await PedidoMenu.findById(id);
         if (!pedido) {
             return res.status(500).json({
                 ok: false,
@@ -159,7 +159,7 @@ const actualizarPedidoMenu = async (req, res) => {
             usuario: uid
         }
 
-        const pedidoActualizado = await Pedido.findByIdAndUpdate(id, cambiosPedido, { new: true });
+        const pedidoActualizado = await PedidoMenu.findByIdAndUpdate(id, cambiosPedido, { new: true });
 
         res.json({
             ok: true,
@@ -183,7 +183,7 @@ const actualizarStatusPedidoMenu = async (req, res) => {
 
     try {
         // 2. Buscamos primero si el pedido existe
-        const pedido = await Pedido.findById(id);
+        const pedido = await PedidoMenu.findById(id);
         if (!pedido) {
             return res.status(404).json({ // Cambiado a 404 (No encontrado) que es más correcto
                 ok: false,
@@ -192,7 +192,7 @@ const actualizarStatusPedidoMenu = async (req, res) => {
         }
         
         // 3. CLAVE: Pasamos un objeto explícito { status } como segundo parámetro
-        const pedidoActualizado = await Pedido.findByIdAndUpdate(
+        const pedidoActualizado = await PedidoMenu.findByIdAndUpdate(
             id, 
             { status: status }, // O simplemente { status } gracias a ES6
             { new: true } 
@@ -216,7 +216,7 @@ const actualizarStatusPedidoMenu = async (req, res) => {
 
 const getPedidoMenus = async (req, res) => {
 
-    const pedidos = await Pedido.find()
+    const pedidos = await PedidoMenu.find()
         .populate('user', 'nombre email')
         .populate('tienda', 'nombre direccion');
     res.json({
@@ -226,7 +226,7 @@ const getPedidoMenus = async (req, res) => {
 };
 const getPedidoMenusTienda = async (req, res) => {
 
-    const pedidos = await Pedido.find().populate('tienda')
+    const pedidos = await PedidoMenu.find().populate('tienda')
         .populate('driver');
 
 
@@ -245,7 +245,7 @@ const getPedidoMenu = async (req, res) => {
 
     const id = req.params.id;
 
-    Pedido.findById(id)
+    PedidoMenu.findById(id)
         .populate('user', 'nombre email')
         .populate('tienda', 'nombre direccion')
         .populate('direccion')
@@ -280,7 +280,7 @@ const borrarPedidoMenu = async (req, res) => {
 
     try {
 
-        const pedido = await Pedido.findById(id);
+        const pedido = await PedidoMenu.findById(id);
         if (!pedido) {
             return res.status(500).json({
                 ok: false,
@@ -288,7 +288,7 @@ const borrarPedidoMenu = async (req, res) => {
             });
         }
 
-        await Pedido.findByIdAndDelete(id);
+        await PedidoMenu.findByIdAndDelete(id);
 
         res.json({
             ok: true,
@@ -306,7 +306,7 @@ const borrarPedidoMenu = async (req, res) => {
 
 const listarPedidoPorUser = (req, res) => {
     var id = req.params['id'];
-    Pedido.find({ user: id }, (err, data_pedido) => {
+    PedidoMenu.find({ user: id }, (err, data_pedido) => {
         if (!err) {
             if (data_pedido) {
                 res.status(200).send({ pedidos: data_pedido });
@@ -323,7 +323,7 @@ const listarPedidoPorUser = (req, res) => {
 const getPedidosByStatus = async (req, res) => {
 
     var status = req.params['status'];
-    Pedido.find({ status: status })
+    PedidoMenu.find({ status: status })
         .populate('tienda', 'nombre')
         .populate('user', 'telefono numdoc first_name last_name')
         .sort({ createdAt: - 1 })
@@ -345,7 +345,7 @@ async function activar(req, res) {
 
     try {
         // 1. Actualizamos el pedido. { new: true } nos devuelve el pedido YA modificado.
-        const pedido_data = await Pedido.findByIdAndUpdate(
+        const pedido_data = await PedidoMenu.findByIdAndUpdate(
             { _id: id },
             { status: 'INPROCESS' },
             { new: true }
@@ -414,7 +414,7 @@ async function desactivar(req, res) {
     const id = req.params.id;
 
     try {
-        const pedido_data = await Pedido.findByIdAndUpdate(
+        const pedido_data = await PedidoMenu.findByIdAndUpdate(
             id,
             { status: 'PENDING' },
             
@@ -439,7 +439,7 @@ async function finalizado(req, res) {
 
     try {
         // 1. Actualizamos el pedido a FINISHED
-        const pedido_data = await Pedido.findByIdAndUpdate(
+        const pedido_data = await PedidoMenu.findByIdAndUpdate(
             { _id: id },
             { status: 'FINISHED' },
             { new: true }
@@ -511,7 +511,7 @@ async function finalizado(req, res) {
 const pedidosbyTiendaId = async (req, res) => {
     var id = req.params['id'];
     try {
-        const data_pedido = await Pedido.find({ tienda: id })
+        const data_pedido = await PedidoMenu.find({ tienda: id })
             .populate('user', 'first_name last_name email telefono numdoc')
             .populate('tienda', 'nombre slug categorias subcategoria')
             .sort({ createdAt: -1 });
@@ -533,7 +533,7 @@ const pedidosbyTiendaIdUser = async (req, res) => {
     }
 
     try {
-        const data_pedido = await Pedido.find({
+        const data_pedido = await PedidoMenu.find({
             tienda: new mongoose.Types.ObjectId(tiendaid),
             user: new mongoose.Types.ObjectId(userid)
         })
