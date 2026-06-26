@@ -5,11 +5,11 @@ const ventaController = require('./ventaController');
 const Pedido = require('../models/pedidomenu');
 const Tienda = require('../models/tienda');
 const Direccion = require('../models/direccion');
-const Notificacion = require('../models/notificacion');
 const Usuario = require('../models/usuario');
-const PushSubscription = require('../models/push-subscription');
 const nodemailer = require('nodemailer');
 const smtpTransport = require('nodemailer-smtp-transport');
+const Notificacion = require('../models/notificacion');
+const PushSubscription = require('../models/push-subscription');
 const { sendNotification } = require('../helpers/notificaciones');
 const { enviarMensajeWhatsApp } = require('../helpers/whatsapp-helper');
 
@@ -507,6 +507,14 @@ const updateStatus = async (req, res) => {
                 referenciaId: transferencia._id,
                 leido: false
             });
+            // si el pago es verficado o true, activamos el pedido
+            const idPedidoAprobado = transferencia.pedido?._id || transferencia.pedido;
+
+            if (idPedidoAprobado) {
+                // Activamos el pedido para procesarlo
+                await Pedido.findByIdAndUpdate(idPedidoAprobado, { status: 'INPROCESS' }, { new: true });
+            }
+
             await nuevaNotificacionUsuario.save();
             console.log(`📝 Historial de notificación [${tipoNotificacion}] guardado para el cliente:`, clienteId);
             // =========================================================================

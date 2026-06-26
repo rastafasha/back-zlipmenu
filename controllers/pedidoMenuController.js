@@ -177,6 +177,43 @@ const actualizarPedidoMenu = async (req, res) => {
 
 };
 
+const actualizarStatusPedidoMenu = async (req, res) => {
+    // 1. Extraemos el id y el nuevo estatus desde el body que mandas de Angular
+    const { status, id } = req.body;
+
+    try {
+        // 2. Buscamos primero si el pedido existe
+        const pedido = await Pedido.findById(id);
+        if (!pedido) {
+            return res.status(404).json({ // Cambiado a 404 (No encontrado) que es más correcto
+                ok: false,
+                msg: 'Pedido no encontrado por el id'
+            });
+        }
+        
+        // 3. CLAVE: Pasamos un objeto explícito { status } como segundo parámetro
+        const pedidoActualizado = await Pedido.findByIdAndUpdate(
+            id, 
+            { status: status }, // O simplemente { status } gracias a ES6
+            { new: true } 
+        );
+
+        // 4. Respondemos con éxito al frontend
+        return res.json({
+            ok: true,
+            pedidoActualizado
+        });
+
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({
+            ok: false,
+            msg: 'Error, hable con el admin'
+        });
+    }
+};
+
+
 const getPedidoMenus = async (req, res) => {
 
     const pedidos = await Pedido.find()
@@ -523,6 +560,7 @@ module.exports = {
     desactivar,
     finalizado,
     pedidosbyTiendaId,
-    pedidosbyTiendaIdUser
+    pedidosbyTiendaIdUser,
+    actualizarStatusPedidoMenu
 
 };

@@ -1,6 +1,9 @@
 const { response } = require('express');
 const Ticket = require('../models/ticket');
 var Mensaje = require('../models/mensaje');
+const Notificacion = require('../models/notificacion');
+const PushSubscription = require('../models/push-subscription');
+const { sendNotification } = require('../helpers/notificaciones');
 
 
 const getTickets = async(req, res) => {
@@ -155,59 +158,99 @@ const borrarTicket = async(req, res) => {
     }
 };
 
-const send = (req, res) => {
-    var data = req.body;
+const send = async (req, res) => {
+    const data = req.body;
 
-    var mensaje = new Mensaje();
-    mensaje.de = data.de;
-    mensaje.para = data.para;
-    mensaje.msm = data.msm;
-    mensaje.ticket = data.ticket;
+    try {
+        // 1. Crear e inicializar el nuevo mensaje con la data del front
+        const nuevoMensaje = new Mensaje({
+            de: data.de,
+            para: data.para,
+            msm: data.msm,
+            ticket: data.ticket
+        });
 
-    if (data.estado == null) {
-        console.log('status');
-        Ticket.findByIdAndUpdate({ _id: data.ticket }, { status: data.status }, (err, ticket_data) => {
-            if (ticket_data) {
-                console.log(ticket_data);
-                mensaje.save((error, mensaje_data) => {
-                    if (!error) {
-                        if (mensaje_data) {
-                            res.status(200).send({
-                                data: mensaje_data,
-                            });
-                        } else {
-                            res.status(200).send({ error: error });
-                        }
-                    } else {
-                        res.status(200).send({ error: error });
+        // 2. Determinar dinámicamente qué campos del Ticket actualizar
+        let camposUpdate = {};
+        
+        if (data.estado === null || data.estado === undefined) {
+            // Si no viene estado, actualizamos el campo 'status' (Ej: 'Entregado', 'Abierto')
+            camposUpdate.status = data.status;
+        } else if (data.estado == 0) {
+            // Si el estado es expresamente 0, actualizamos la columna 'estado'
+            camposUpdate.estado = data.estado;
+        }
+
+        // 3. Actualizar el ticket solo si determinamos que hay cambios por aplicar
+        if (Object.keys(camposUpdate).length > 0) {
+            const ticketActualizado = await Ticket.findByIdAndUpdate(data.ticket, camposUpdate, { new: true });
+            if (!ticketActualizado) {
+                console.warn(`Advertencia: No se encontró el ticket con ID ${data.ticket} para actualizar.`);
+            }
+        }
+
+        // 4. Guardar de forma segura el mensaje de chat en MongoDB
+        const mensajeGuardado = await nuevoMensaje.save();
+
+        // 5. DISPARAR NOTIFICACIÓN EN TIEMPO REAL AL RECEPTOR ('para')
+        try {
+            // Buscamos si la persona que debe recibir el mensaje tiene suscripciones Push activas
+            const suscripciones = await PushSubscription.find({ usuario: data.para });
+
+            if (suscripciones && suscripciones.length > 0) {
+                const payload = JSON.stringify({
+                    notification: {
+                        title: 'Nuevo mensaje de chat 💬',
+                        body: data.msm.length > 50 ? `${data.msm.substring(0, 50)}...` : data.msm,
+                        icon: '/assets/icon-96x96.png',
+                        vibrate:[100, 50, 100,],
+                        data: { url: `/tickets/${data.ticket}` }
                     }
                 });
-            }
-        })
-    }
-    if (data.estado == 0) {
-        Ticket.findByIdAndUpdate({ _id: data.ticket }, { estado: data.estado }, (err, ticket_data) => {
-            if (ticket_data) {
-                console.log(ticket_data);
-                mensaje.save((error, mensaje_data) => {
-                    if (!error) {
-                        if (mensaje_data) {
-                            res.status(200).send({
-                                data: mensaje_data,
-                            });
-                        } else {
-                            res.status(200).send({ error: error });
-                        }
-                    } else {
-                        res.status(200).send({ error: error });
-                    }
-                });
-            }
-        })
-    }
 
+                // Enviamos las push en paralelo sin bloquear la respuesta de la API
+                const promesas = suscripciones.map(sub => 
+                    sendNotification({
+                        endpoint: sub.endpoint,
+                        keys: { auth: sub.keys.auth, p256dh: sub.keys.p256dh }
+                    }, payload).catch(e => console.error('Error enviando a un dispositivo individual:', e))
+                );
+                await Promise.all(promesas);
+            }
 
-}
+            // También guardamos el registro en tu base de datos bajo tu modelo 'Notificacion'
+            const alertaHistorial = new Notificacion({
+                usuario: data.para,
+                titulo: 'Nuevo mensaje en el ticket',
+                mensaje: data.msm,
+                tipo: 'NUEVO_MENSAJE', // Sincronizado perfectamente con tu ENUM de Mongoose
+                referenciaId: data.ticket,
+                leido: false
+            });
+            await alertaHistorial.save();
+
+        } catch (pushError) {
+            // Si las notificaciones fallan por problemas de internet o tokens vencidos,
+            // atrapamos el error aquí para que NO interfiera con la entrega del mensaje de chat
+            console.error('Error secundario al procesar las notificaciones push:', pushError);
+        }
+
+        // 6. ENVIAR RESPUESTA EXITOSA ÚNICA AL FRONTEND DE ANGULAR
+        return res.status(200).json({
+            ok: true,
+            data: mensajeGuardado
+        });
+
+    } catch (error) {
+        console.error('Error crítico en el controlador de mensajes (send):', error);
+        if (!res.headersSent) {
+            return res.status(500).json({
+                ok: false,
+                error: 'Error interno en el servidor al enviar el mensaje.'
+            });
+        }
+    }
+};
 
 const dataMessenger = (req, res) => {
 

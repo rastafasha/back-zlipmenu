@@ -19,6 +19,7 @@
     finalizado,
     pedidosbyTiendaId,
     pedidosbyTiendaIdUser,
+    actualizarStatusPedidoMenu
  } = require('../controllers/pedidoMenuController');
  const { validarJWT } = require('../middlewares/validar-jwt');
  const { validarCampos } = require('../middlewares/validar-campos');
@@ -33,13 +34,19 @@
  router.get('/by_tiendaiduser/:tiendaid/:userid',pedidosbyTiendaIdUser);
  
  router.post('/store', [
-    //  validarJWT,
+     validarJWT,
      validarCampos
  ], crearPedidoMenu);
  
  router.put('/update/:id', [
+   validarJWT,
      validarCampos
  ], actualizarPedidoMenu);
+
+ router.put('/updatestatus/', [
+   validarJWT,
+     validarCampos
+ ], actualizarStatusPedidoMenu);
  
 
  router.put('/activar/:id', validarJWT, activar);

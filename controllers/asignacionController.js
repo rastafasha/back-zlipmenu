@@ -1,12 +1,15 @@
 const { response } = require('express');
+const mongoose = require('mongoose');
 const Tienda = require('../models/tienda');
 const Pedido = require('../models/pedidomenu');
 const Driver = require('../models/driver');
 const Asignacion = require('../models/asignardelivery');
+const Notificacion = require('../models/notificacion');
+const PushSubscription = require('../models/push-subscription');
+const { sendNotification } = require('../helpers/notificaciones');
 
 
-
-const crearAsignacion = async(req, res) => {
+const crearAsignacion = async (req, res) => {
 
     const { driver, status, tienda, pedido } = req.body;
 
@@ -14,14 +17,14 @@ const crearAsignacion = async(req, res) => {
     try {
 
         const existeDriver = await Driver.findById(body.driver);
-       
+
         const existeTienda = await Tienda.findById(body.tienda);
         const existePedido = await Pedido.findById(body.pedido);
 
         if (!existeDriver) {
             return res.status(400).json({
                 ok: false,
-                 msg: 'El Conductor no existe'
+                msg: 'El Conductor no existe'
             })
         }
         if (!existeTienda) {
@@ -37,13 +40,83 @@ const crearAsignacion = async(req, res) => {
             });
         }
 
-        
+
         const asignacion = new Asignacion({
             driver: body.driver,
             tienda: body.tienda,
             pedido: body.pedido,
             status: body.status,
         });
+
+        
+        // =========================================================================
+        // 🚀 NUEVA LÓGICA: Notificar al admin que esta en camino el pedido
+        // =========================================================================
+        try {
+            const tituloAdmin = 'Pedido Asignado ✨';
+            const mensajeAdmin = `El Pedido ha sido asignado para envio.`;
+            const urlRedireccionAdmin = `/dashboard/ventas/modulo`;
+            // 📝 PASO 1: GUARDAR UNA SOLA NOTIFICACIÓN PARA EL HISTORIAL COMPARTIDO DEL LOCAL
+            // Seteamos usuario en null y enlazamos directamente al ID de la tienda/local
+            const nuevaNotiLocal = new Notificacion({
+                usuario: null,
+                local: body.tienda, // Guardamos el ID de la tienda directamente
+                titulo: tituloAdmin,
+                mensaje: mensajeAdmin,
+                tipo: 'PEDIDO_ENVIADO',
+                pedido: body.pedido, 
+                leido: false // Aseguramos que nazca en falso para encender el globo
+            });
+            await nuevaNotiLocal.save();
+            console.log(`📝 Historial de pago registrado exclusivamente para el local:`, idTiendaTarget);
+
+            // 2. Buscamos los usuarios administradores dueños de ESTA tienda específica
+            const usuariosAutorizados = await Usuario.find({
+                $or: [
+                    { role: 'SUPERADMIN' },
+                    { role: 'ADMIN', local: body.tienda } // Evita que se crucen los paneles
+                ]
+            });
+
+            const idsAutorizados = usuariosAutorizados.map(u => u._id.toString());
+
+            if (idsAutorizados.length > 0) {
+                // 2. Buscamos las suscripciones push asociadas exclusivamente a esos administradores
+                const subsFiltradas = await PushSubscription.find({
+                    usuario: { $in: idsAutorizados }
+                });
+
+                if (subsFiltradas.length > 0) {
+                    // 2. Buscamos las suscripciones push asociadas exclusivamente a esos administradores
+                    const subsFiltradas = await PushSubscription.find({
+                        usuario: { $in: idsAutorizados }
+                    });
+
+                    // 🚀 PASO 2: DESPACHAMOS EL WEB PUSH EN TIEMPO REAL A LOS DISPOSITIVOS
+                    subsFiltradas.forEach(s => {
+                        sendNotification(
+                            s.subscription, // 🔧 REPARADO: Pasamos el objeto de suscripción limpio igual que en reservas
+                            tituloAdmin,
+                            mensajeAdmin,
+                            urlRedireccionAdmin,
+                            s.usuario,
+                            'NUEVO_PAGO',
+                            id
+                        ).catch(err => {
+                            console.error('Error enviando push de pago:', err);
+                            if (err.statusCode === 410 || err.statusCode === 404) {
+                                s.deleteOne().catch(e => console.log('Error eliminando sub obsoleta', e));
+                            }
+                        });
+                    });
+
+                }
+            }
+
+        } catch (errorNotiPago) {
+            console.error('Error en bloque de notificaciones de pago:', errorNotiPago);
+        }
+
 
         await Pedido.findByIdAndUpdate(req.body.pedido, { asignado: true });
 
@@ -66,7 +139,7 @@ const crearAsignacion = async(req, res) => {
 
 };
 
-const actualizarAsignacion = async(req, res) => {
+const actualizarAsignacion = async (req, res) => {
 
     const id = req.params.id;
     const uid = req.uid;
@@ -113,7 +186,7 @@ const actualizarAsignacion = async(req, res) => {
 };
 
 
-const actualizarAsignacionCoord = async(req, res) => {
+const actualizarAsignacionCoord = async (req, res) => {
 
     const id = req.params.id;
     const uid = req.uid;
@@ -151,17 +224,17 @@ const actualizarAsignacionCoord = async(req, res) => {
 
 };
 
-const getAsignacions = async(req, res) => {
+const getAsignacions = async (req, res) => {
 
     const asignacions = await Asignacion.find()
-      
+
 
     res.json({
         ok: true,
         asignacions
     });
 };
-const getAsignacionsTienda = async(req, res) => {
+const getAsignacionsTienda = async (req, res) => {
     try {
         const tiendaid = req.params.tiendaid;
         const page = parseInt(req.query.page) || 1;
@@ -192,7 +265,7 @@ const getAsignacionsTienda = async(req, res) => {
     }
 };
 
-const getAsignacion = async(req, res) => {
+const getAsignacion = async (req, res) => {
 
     const id = req.params.id;
 
@@ -225,7 +298,7 @@ const getAsignacion = async(req, res) => {
 };
 
 
-const borrarAsignacion = async(req, res) => {
+const borrarAsignacion = async (req, res) => {
 
     const id = req.params.id;
 
@@ -255,8 +328,8 @@ const borrarAsignacion = async(req, res) => {
 };
 
 const listarAsignacionPorDriver = (req, res) => {
-    var id = req.params['id'];
-    Asignacion.find({ driver: id }, (err, data_asignacion) => {
+    var driver = req.params['id'];
+    Asignacion.find({ driver: driver }, (err, data_asignacion) => {
         if (!err) {
             if (data_asignacion) {
                 res.status(200).send({ asignacions: data_asignacion });
@@ -266,17 +339,17 @@ const listarAsignacionPorDriver = (req, res) => {
         } else {
             res.status(500).send({ error: err });
         }
-    })
-    .sort({createdAt: - 1});
+    }).populate('pedido')
+    .sort({ createdAt: - 1 });
 }
 
-const listarAsignacionPorUser = async(req, res) => {
+const listarAsignacionPorUser = async (req, res) => {
     var id = req.params['id'];
     try {
         // First find all ventas for this user
         const pedidos = await Pedido.find({ user: id });
         const pedidoIds = pedidos.map(v => v._id);
-        
+
         // Then find assignments for these ventas
         Asignacion.find({ venta: { $in: pedidoIds } }, (err, data_asignacion) => {
             if (!err) {
@@ -289,7 +362,7 @@ const listarAsignacionPorUser = async(req, res) => {
                 res.status(500).send({ error: err });
             }
         })
-        .sort({createdAt: -1});
+            .sort({ createdAt: -1 });
     } catch (err) {
         res.status(500).send({ error: err });
     }
@@ -299,77 +372,130 @@ const listarAsignacionPorUser = async(req, res) => {
 function activar(req, res) {
     var id = req.params['id'];
     // console.log(id);
-    Asignacion.findByIdAndUpdate({ _id: id }, 
-        { status: 'En Camino' }, 
-        { statusD: 'En Camino' }, 
+    Asignacion.findByIdAndUpdate({ _id: id },
+        { status: 'En Camino' },
+        { statusD: 'En Camino' },
         (err, asignacion_data) => {
-        if (err) {
-            res.status(500).send({ message: err });
-        } else {
-            if (asignacion_data) {
-                res.status(200).send({ asignacion: asignacion_data });
+            if (err) {
+                res.status(500).send({ message: err });
             } else {
-                res.status(403).send({ message: 'No se actualizó el asignacion, vuelva a intentar nuevamente.' });
+                if (asignacion_data) {
+                    res.status(200).send({ asignacion: asignacion_data });
+                } else {
+                    res.status(403).send({ message: 'No se actualizó el asignacion, vuelva a intentar nuevamente.' });
+                }
             }
-        }
-    })
+        })
 }
 
-function entregado(req, res) {
-    var id = req.params['id'];
-    // console.log(id);
-    Asignacion.findByIdAndUpdate({ _id: id }, 
-        { status: 'Entregado' }, 
-        { statusD: 'Entregado' }, 
-        (err, asignacion_data) => {
-        if (err) {
-            res.status(500).send({ message: err });
-        } else {
-            if (asignacion_data) {
-                res.status(200).send({ asignacion: asignacion_data });
-            } else {
-                res.status(403).send({ message: 'No se actualizó el asignacion, vuelva a intentar nuevamente.' });
-            }
+// Asegúrate de tener importado mongoose en la parte superior del archivo
+
+
+async function entregado(req, res) {
+    const id = req.params['id'];
+    
+    try {
+        const asignacion_data = await Asignacion.findByIdAndUpdate(
+            id, 
+            { status: 'Entregado'}, 
+            { new: true }
+        );
+
+        if (!asignacion_data) {
+            return res.status(404).json({ ok: false, message: 'No se encontró la asignación.' });
         }
-    })
+
+        
+
+        return res.status(200).json({ 
+            ok: true,
+            asignacion: asignacion_data 
+        });
+
+    } catch (error) {
+        console.error('Error en controlador entregado:', error);
+        if (!res.headersSent) {
+            return res.status(500).json({ ok: false, msg: 'Error interno en el servidor.' });
+        }
+    }
 }
 
-function recibido(req, res) {
-    var id = req.params['id'];
-    // console.log(id);
-    Asignacion.findByIdAndUpdate({ _id: id }, 
-        { status: 'Confirmado' }, 
-        { statusC: 'Recibido' }, 
-        (err, asignacion_data) => {
-        if (err) {
-            res.status(500).send({ message: err });
-        } else {
-            if (asignacion_data) {
-                res.status(200).send({ asignacion: asignacion_data });
-            } else {
-                res.status(403).send({ message: 'No se actualizó el asignacion, vuelva a intentar nuevamente.' });
-            }
+
+
+async function recibido(req, res) {
+    const id = req.params['id'];
+    
+    try {
+        // 1. Agrupamos ambos campos de estado en el segundo parámetro
+        const asignacion_data = await Asignacion.findByIdAndUpdate(
+            id, 
+            { status: 'Confirmado' }, 
+            { new: true } // Nos devuelve el registro con los cambios ya aplicados
+        );
+
+        // 2. Si el ID no existe en la base de datos, respondemos de inmediato
+        if (!asignacion_data) {
+            return res.status(404).json({ 
+                ok: false, 
+                message: 'No se encontró la asignación para confirmar.' 
+            });
         }
-    })
+        
+        // 3. Respuesta exitosa única para tu app de Angular
+        return res.status(200).json({ 
+            ok: true,
+            asignacion: asignacion_data 
+        });
+
+    } catch (error) {
+        console.error('Error en controlador recibido:', error);
+        return res.status(500).json({ 
+            ok: false, 
+            msg: 'Error interno en el servidor al confirmar recepción.' 
+            
+        });
+    }
 }
 
-const getAsignacionsByStatus = async(req, res) => {
 
-    var id = req.params['id'];
-    var status = req.params['status'];
-    Asignacion.find({ driver: id, status: status }, (err, data_asignacion) => {
-        if (!err) {
-            if (data_asignacion) {
-                res.status(200).send({ asignacions: data_asignacion });
-            } else {
-                res.status(500).send({ error: err });
-            }
-        } else {
-            res.status(500).send({ error: err });
+const getAsignacionsByStatus = async (req, res) => {
+    const id = req.params['id'];
+    const status = req.params['status'];
+
+    try {
+        // 1. Convertimos el string de la URL en un ObjectId real de MongoDB
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({
+                ok: false,
+                error: 'El ID del chofer provisto no es un ObjectId válido.'
+            });
         }
-    })
-    .sort({createdAt: - 1});
+        const driverObjectId = new mongoose.Types.ObjectId(id.trim());
+
+        // 2. 💡 CLAVE: Usamos el modelo exacto 'AsignarDelivery' para hacer la consulta
+        const data_asignacion = await Asignacion.find({ 
+            driver: driverObjectId, 
+            status: status 
+        }).sort({ createdAt: -1 });
+
+        // 3. Enviamos la respuesta. Si hay datos, los verás en pantalla de inmediato
+        return res.status(200).json({ 
+            ok: true,
+            asignacions: data_asignacion 
+        });
+
+    } catch (error) {
+        console.error('Error crítico en getAsignacionsByStatus:', error);
+        if (!res.headersSent) {
+            return res.status(500).json({ 
+                ok: false, 
+                error: 'Error interno en el servidor al consultar las asignaciones por estatus.' 
+            });
+        }
+    }
 };
+
+
 
 
 

@@ -4,11 +4,10 @@ const Tienda = require('../models/tienda');
 var Detalle = require('../models/detalle');
 var Cancelacion = require('../models/cancelacion');
 const PushSubscription = require('../models/push-subscription');
+const Notificacion = require('../models/notificacion');
 const { sendNotification } = require('../helpers/notificaciones');
-
 const { io } = require('../index');
 const ProductoController = require('./productoController');
-
 const { enviarFacturaWhatsApp } = require('../helpers/whatsapp-helper'); // Si usas whatsapp-web.js
 
 
@@ -530,12 +529,38 @@ function finalizar(req, res) {
     var id = req.params['id'];
     Venta.findByIdAndUpdate({ _id: id }, { estado: 'Finalizado' }, (err, venta_data) => {
         if (venta_data) {
+            
+            // ==========================================
+            // CREAR NOTIFICACIÓN PARA EL ADMINISTRADOR
+            // ==========================================
+            const nuevaNotificacionAdmin = new Notificacion({
+                usuario: venta_data.usuario,       // El ID del cliente o admin, según manejes tus roles
+                local: venta_data.idtienda,        // El ID del restaurante (multi-tenant)
+                titulo: 'Pedido Entregado ✨',
+                mensaje: `El cliente ya recibió su pedido. Listo para enviar factura digital.`,
+                tipo: 'VENTA_FINALIZADA',          // Te ayuda a identificar que esta requiere acción de factura
+                referenciaId: venta_data._id,      // ID de la venta para que el admin pueda abrirla al hacer clic
+                leido: false
+            });
+
+            // Guardamos la notificación en la base de datos
+            nuevaNotificacionAdmin.save((err_notif, notif_data) => {
+                if (err_notif) {
+                    console.error('Error al guardar la notificación:', err_notif);
+                }
+                // Nota: Si usas WebSockets (ej. Socket.io), aquí emitirías el evento en tiempo real
+            });
+
+            // Respondemos con éxito a Angular
             res.status(200).send({ venta: venta_data });
+
         } else {
             res.status(500).send({ error: err });
         }
-    })
+    });
 }
+
+
 
 
 function evaluar_orden_coment(req, res) {
