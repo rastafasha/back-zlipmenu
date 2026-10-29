@@ -6,7 +6,11 @@ var PresupuestoSchema = Schema({
     tienda: { type: Schema.ObjectId, ref: 'tienda', required: true },
     
     // 👤 El cliente que solicita la cotización (usuario express o registrado)
-    cliente: { type: Schema.ObjectId, ref: 'Usuario', required: true },
+    cliente: { type: Schema.ObjectId, ref: 'Usuario', required: false },
+    first_name: { type: String, required: true }, // El nombre que ingresa en el checkout
+    last_name: { type: String, required: false }, // 👈 Cambiado a false para checkout rápido
+    telefono: { type: String, required: true, unique: true },
+
     
     // 🍕 Título descriptivo (Ej: "Banquete Corporativo Empresa X")
     title: { type: String, required: true },

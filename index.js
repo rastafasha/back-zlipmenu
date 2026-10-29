@@ -153,6 +153,8 @@ const startServer = async () => {
     app.use('/api/migration', require('./routes/migration'));
     app.use('/api/tasas', require('./routes/tasas'));
 
+    app.use('/api/meli', require('./routes/mercadolibre'));
+
     //notification
     const vapidKeys = {
         "publicKey": process.env.VAPI_KEY_PUBLIC,
@@ -194,6 +196,8 @@ const startServer = async () => {
     //     });
     // }
 };
+
+
 
 // Start the server
 startServer().catch(err => {

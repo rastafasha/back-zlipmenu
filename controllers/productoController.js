@@ -9,6 +9,7 @@ const { randomInt } = require('crypto');
 const translate = require('google-translate-api-x');
 const path = require('path');
 const mongoose = require('mongoose');
+const axios = require('axios');
 
 // Internal function to reduce stock programmatically
 async function reducir_stock_internal(productoId, cantidad) {
@@ -35,30 +36,30 @@ function listarAdmin(req, res) {
     Producto.find({
         titulo: new RegExp(filtro, 'i'),
         status: ['Activo', 'Desactivado', 'Edición'],
-    }, ).populate('marca')
-    .populate('categoria')
-    .populate('local')
-    .populate('color')
-    .populate('selector')
-    .sort({ createdAt: -1 }).exec((err, producto_data) => {
-        if (err) {
-            res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
-        } else {
-            if (producto_data) {
-                res.status(200).send({ productos: producto_data });
+    },).populate('marca')
+        .populate('categoria')
+        .populate('local')
+        .populate('color')
+        .populate('selector')
+        .sort({ createdAt: -1 }).exec((err, producto_data) => {
+            if (err) {
+                res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
             } else {
-                res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                if (producto_data) {
+                    res.status(200).send({ productos: producto_data });
+                } else {
+                    res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                }
             }
-        }
-    });
+        });
 }
 
 
-const getProductos = async(req, res) => {
+const getProductos = async (req, res) => {
 
     const productos = await Producto.find()
-    .sort({ createdAt: -1 })
-    .populate('titulo img categoria color selector');
+        .sort({ createdAt: -1 })
+        .populate('titulo img categoria color selector');
 
     res.json({
         ok: true,
@@ -66,29 +67,29 @@ const getProductos = async(req, res) => {
     });
 };
 
-const getProductosActivos = async(req, res) => {
+const getProductosActivos = async (req, res) => {
 
     Producto.find({ status: ['Activo'] })
-    .populate('categoria')
-    .populate('color')
-    .sort({ createdAt: -1 })
-    .exec((err, productos) => {
-        if (err) {
-            res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
-        } else {
-            if (productos) {
-                res.status(200).send({ productos: productos });
+        .populate('categoria')
+        .populate('color')
+        .sort({ createdAt: -1 })
+        .exec((err, productos) => {
+            if (err) {
+                res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
             } else {
-                res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                if (productos) {
+                    res.status(200).send({ productos: productos });
+                } else {
+                    res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                }
             }
-        }
-    });
+        });
 
 };
 
-const destacado = async(req, res) => {
+const destacado = async (req, res) => {
 
-    Producto.find({  isFeatured: ['true'], status: ['Activo'] }).populate('categoria').exec((err, productos) => {
+    Producto.find({ isFeatured: ['true'], status: ['Activo'] }).populate('categoria').exec((err, productos) => {
         if (err) {
             res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
         } else {
@@ -107,7 +108,7 @@ const destacado = async(req, res) => {
     });
 };
 
-const getProducto = async(req, res) => {
+const getProducto = async (req, res) => {
 
     const id = req.params.id;
     const uid = req.uid;
@@ -140,7 +141,7 @@ const getProducto = async(req, res) => {
 
 };
 
-const getProductoSlug = async(req, res) => {
+const getProductoSlug = async (req, res) => {
 
     const slug = req.params.slug;
     const uid = req.uid;
@@ -171,7 +172,7 @@ const getProductoSlug = async(req, res) => {
 
 };
 
-const getProductosTiendaId = async(req, res) => {
+const getProductosTiendaId = async (req, res) => {
 
     const id = req.params.id;
     const uid = req.uid;
@@ -204,9 +205,9 @@ const getProductosTiendaId = async(req, res) => {
         });
 
 };
-const getProductosTiendaIdActive = async(req, res) => {
+const getProductosTiendaIdActive = async (req, res) => {
     // Eliminamos cualquier espacio en blanco o salto de línea que venga del frontend
-    const id = req.params.id.trim(); 
+    const id = req.params.id.trim();
 
     // Validación de seguridad: Si el ID no tiene el formato correcto de MongoDB, se frena aquí
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -218,14 +219,14 @@ const getProductosTiendaIdActive = async(req, res) => {
 
     try {
         // Forzamos el casteo a un ObjectId real de MongoDB para la consulta
-        const productos = await Producto.find({ 
-            local: new mongoose.Types.ObjectId(id), 
-            status: 'Activo' 
+        const productos = await Producto.find({
+            local: new mongoose.Types.ObjectId(id),
+            status: 'Activo'
         })
-        .populate('local', 'nombre slug categorias subcategorias')
-        .populate('selector') 
-        .populate('categoria')
-        .sort({ createdAt: -1 });
+            .populate('local', 'nombre slug categorias subcategorias')
+            .populate('selector')
+            .populate('categoria')
+            .sort({ createdAt: -1 });
 
         if (!productos || productos.length === 0) {
             return res.status(404).json({
@@ -250,7 +251,7 @@ const getProductosTiendaIdActive = async(req, res) => {
     }
 };
 
-const crearProducto = async(req, res) => {
+const crearProducto = async (req, res) => {
     const uid = req.uid;
     const titulo = req.body.titulo || '';
     const idLocal = req.body.local; // ID de la tienda a la que pertenece el producto
@@ -295,7 +296,7 @@ const crearProducto = async(req, res) => {
             ...req.body, // Trae el resto de campos (precios, stock, categoria, local, etc.)
             usuario: uid,
             slug: slug, // Asegura pisar cualquier slug corrupto
-            
+
             // Reestructuramos las propiedades de texto plano a sub-objetos { es, en }
             titulo: {
                 es: titulo,
@@ -327,7 +328,7 @@ const crearProducto = async(req, res) => {
         });
     }
 };
-const actualizarProducto = async(req, res) => {
+const actualizarProducto = async (req, res) => {
     const id = req.params.id;
     const uid = req.uid;
 
@@ -349,7 +350,7 @@ const actualizarProducto = async(req, res) => {
 
         // 🚀 LA MAGIA: Traducir de forma reactiva y condicional sólo lo que cambie
         // Evaluamos campo por campo si el Administrador de Angular está enviando una actualización de texto
-        
+
         // A) Si el dueño actualizó el TÍTULO:
         if (req.body.titulo) {
             const slug = req.body.titulo
@@ -365,8 +366,8 @@ const actualizarProducto = async(req, res) => {
             const idLocal = req.body.local || producto.local;
 
             if (idLocal) {
-                const existeProductoEnLocal = await Producto.findOne({ 
-                    slug, 
+                const existeProductoEnLocal = await Producto.findOne({
+                    slug,
                     local: idLocal,
                     _id: { $ne: id }
                 });
@@ -381,7 +382,7 @@ const actualizarProducto = async(req, res) => {
 
             // Traducimos el nuevo título al inglés
             const traducirTitulo = await translate(req.body.titulo, { from: 'es', to: 'en' });
-            
+
             // Empaquetamos la propiedad bilingüe en el objeto de cambios
             cambiosProducto.titulo = {
                 es: req.body.titulo,
@@ -411,6 +412,9 @@ const actualizarProducto = async(req, res) => {
         // 4. Ejecutar la actualización en MongoDB Atlas con los objetos { es, en } procesados
         const productoActualizado = await Producto.findByIdAndUpdate(id, cambiosProducto, { new: true });
 
+        // 🚀 DISPARADOR EN SEGUNDO PLANO PARA MERCADO LIBRE
+        actualizarStockYPrecioEnML(id);
+
         res.json({
             ok: true,
             productoActualizado
@@ -427,7 +431,7 @@ const actualizarProducto = async(req, res) => {
 };
 
 
-const borrarProducto = async(req, res) => {
+const borrarProducto = async (req, res) => {
 
     const id = req.params.id;
 
@@ -461,26 +465,26 @@ function find_by_slug(req, res) {
     var slug = req.params['slug'];
 
     Producto.findOne({ slug: slug })
-    .populate('marca')
-    .populate('color')
-    .populate('selector')
-    .exec((err, producto_data) => {
-        if (err) {
-            res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
-        } else {
-            if (producto_data) {
-                res.status(200).send({ producto: producto_data });
+        .populate('marca')
+        .populate('color')
+        .populate('selector')
+        .exec((err, producto_data) => {
+            if (err) {
+                res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
             } else {
-                res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                if (producto_data) {
+                    res.status(200).send({ producto: producto_data });
+                } else {
+                    res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                }
             }
-        }
-    });
+        });
 }
 
 
 async function find_by_brandig(req, res) {
     try {
-        const brandSlugOrName = req.params['slug'] || req.params['marca'] ;
+        const brandSlugOrName = req.params['slug'] || req.params['marca'];
 
         if (!brandSlugOrName) {
             return res.status(400).send({ message: 'Marca no especificada en los parámetros.' });
@@ -517,22 +521,22 @@ async function find_by_brandig(req, res) {
 
 function listar_newest(req, res) {
     Producto.find({ status: ['Activo'] })
-    .populate('categoria')
-    .exec((err, productos) => {
-        if (err) {
-            res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
-        } else {
-            if (productos) {
-                // Shuffle the array
-                const shuffled = productos.sort(() => 0.5 - Math.random());
-                // Take first 4
-                const randomProductos = shuffled.slice(0, 4);
-                res.status(200).send({ productos: randomProductos });
+        .populate('categoria')
+        .exec((err, productos) => {
+            if (err) {
+                res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
             } else {
-                res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                if (productos) {
+                    // Shuffle the array
+                    const shuffled = productos.sort(() => 0.5 - Math.random());
+                    // Take first 4
+                    const randomProductos = shuffled.slice(0, 4);
+                    res.status(200).send({ productos: randomProductos });
+                } else {
+                    res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                }
             }
-        }
-    });
+        });
 }
 
 function listar_best_sellers(req, res) {
@@ -544,8 +548,8 @@ function listar_best_sellers(req, res) {
 }
 
 function listar_best_sellers_local(req, res) {
-     const id = req.params.id;
-    Producto.find({local:id}).sort({ ventas: -1 }).limit(8).exec((err, data) => {
+    const id = req.params.id;
+    Producto.find({ local: id }).sort({ ventas: -1 }).limit(8).exec((err, data) => {
         if (data) {
             res.status(200).send({ data: data });
         }
@@ -562,7 +566,7 @@ function listar_populares(req, res) {
 
 function listar_populares_local(req, res) {
     const id = req.params.id;
-    Producto.find({local:id}).sort({ stars: -1 }).limit(4).exec((err, data) => {
+    Producto.find({ local: id }).sort({ stars: -1 }).limit(4).exec((err, data) => {
         if (data) {
             res.status(200).send({ data: data });
         }
@@ -589,12 +593,12 @@ function listar_papelera(req, res) {
 }
 
 //categoria
-const cat_by_name = async(req, res) => {
+const cat_by_name = async (req, res) => {
     try {
         var nombre = req.params['nombre'];
 
         // First, find the category by name to get its ObjectId
-        
+
         const categoria = await Categoria.findOne({ nombre: new RegExp('^' + nombre + '$', 'i') });
 
 
@@ -658,19 +662,19 @@ function listar_productosCateg(req, res) {
 
     const id = req.params.id;
 
-    Producto.find({ categoria: id, status: ['Activo']  })
-    .populate('categoria')
-    .exec((err, producto_data) => {
-        if (err) {
-            res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
-        } else {
-            if (producto_data) {
-                res.status(200).send({ productos: producto_data });
+    Producto.find({ categoria: id, status: ['Activo'] })
+        .populate('categoria')
+        .exec((err, producto_data) => {
+            if (err) {
+                res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
             } else {
-                res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                if (producto_data) {
+                    res.status(200).send({ productos: producto_data });
+                } else {
+                    res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                }
             }
-        }
-    });
+        });
 
 }
 
@@ -678,19 +682,19 @@ function listar_productosCategNombre(req, res) {
 
     const nombre = req.params.nombre;
 
-    Producto.find({ categoria: nombre, status: ['Activo']  })
-    .populate('categoria')
-    .exec((err, productos) => {
-        if (err) {
-            res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
-        } else {
-            if (productos) {
-                res.status(200).send({ productos: productos });
+    Producto.find({ categoria: nombre, status: ['Activo'] })
+        .populate('categoria')
+        .exec((err, productos) => {
+            if (err) {
+                res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
             } else {
-                res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                if (productos) {
+                    res.status(200).send({ productos: productos });
+                } else {
+                    res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                }
             }
-        }
-    });
+        });
 
 }
 
@@ -754,7 +758,8 @@ function reducir_stock(req, res) {
         if (producto) {
             Producto.findByIdAndUpdate({ _id: id }, { stock: parseInt(producto.stock) - parseInt(cantidad) }, (err, data) => {
                 if (data) {
-                    // console.log(data);
+                    // 🚀 DISPARADOR EN SEGUNDO PLANO PARA MERCADO LIBRE
+                    actualizarStockYPrecioEnML(id);
                     res.status(200).send({ data: data });
                 } else {
                     // console.log(err);
@@ -774,7 +779,8 @@ function aumentar_stock(req, res) {
         if (producto) {
             Producto.findByIdAndUpdate({ _id: id }, { stock: parseInt(producto.stock) + parseInt(cantidad) }, (err, data) => {
                 if (data) {
-                    // console.log(data);
+                    // 🚀 DISPARADOR EN SEGUNDO PLANO PARA MERCADO LIBRE
+                    actualizarStockYPrecioEnML(id);
                     res.status(200).send({ data: data });
                 } else {
                     // console.log(err);
@@ -805,12 +811,12 @@ function aumentar_venta(req, res) {
 }
 
 
-const listar_autocomplete = async(req, res) => {
+const listar_autocomplete = async (req, res) => {
 
     const id = req.params.id;
     const uid = req.uid;
 
-    Producto.find({ status: ['Activo'], }, ).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
+    Producto.find({ status: ['Activo'], },).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
         if (err) {
             res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
         } else {
@@ -854,18 +860,18 @@ function listar_productosColor(req, res) {
     const id = req.params.id;
 
     Producto.find({ color: id })
-    .populate('color')
-    .exec((err, producto_data) => {
-        if (err) {
-            res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
-        } else {
-            if (producto_data) {
-                res.status(200).send({ productos: producto_data });
+        .populate('color')
+        .exec((err, producto_data) => {
+            if (err) {
+                res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
             } else {
-                res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                if (producto_data) {
+                    res.status(200).send({ productos: producto_data });
+                } else {
+                    res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+                }
             }
-        }
-    });
+        });
 
 }
 
@@ -917,7 +923,7 @@ function ecoomerce(req, res) {
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
 
-                }, ).populate('marca').populate('categoria').sort({ titulo: 1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ titulo: 1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -936,7 +942,7 @@ function ecoomerce(req, res) {
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
                     marca: marca
-                }, ).populate('marca').populate('categoria').sort({ titulo: 1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ titulo: 1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -956,7 +962,7 @@ function ecoomerce(req, res) {
                     titulo: new RegExp(filtro, 'i'),
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
-                }, ).populate('marca').populate('categoria').sort({ titulo: -1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ titulo: -1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -973,7 +979,7 @@ function ecoomerce(req, res) {
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
                     marca: marca
-                }, ).populate('marca').populate('categoria').sort({ titulo: -1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ titulo: -1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -991,7 +997,7 @@ function ecoomerce(req, res) {
                     titulo: new RegExp(filtro, 'i'),
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
-                }, ).populate('marca').populate('categoria').sort({ rating: -1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ rating: -1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -1008,7 +1014,7 @@ function ecoomerce(req, res) {
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
                     marca: marca
-                }, ).populate('marca').populate('categoria').sort({ rating: -1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ rating: -1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -1026,7 +1032,7 @@ function ecoomerce(req, res) {
                     titulo: new RegExp(filtro, 'i'),
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
-                }, ).populate('marca').populate('categoria').sort({ precio_ahora: 1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ precio_ahora: 1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -1043,7 +1049,7 @@ function ecoomerce(req, res) {
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
                     marca: marca
-                }, ).populate('marca').populate('categoria').sort({ precio_ahora: 1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ precio_ahora: 1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -1061,7 +1067,7 @@ function ecoomerce(req, res) {
                     titulo: new RegExp(filtro, 'i'),
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
-                }, ).populate('marca').populate('categoria').sort({ precio_ahora: -1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ precio_ahora: -1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -1078,7 +1084,7 @@ function ecoomerce(req, res) {
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
                     marca: marca
-                }, ).populate('marca').populate('categoria').sort({ precio_ahora: -1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ precio_ahora: -1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -1100,7 +1106,7 @@ function ecoomerce(req, res) {
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
 
-                }, ).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -1118,7 +1124,7 @@ function ecoomerce(req, res) {
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
                     marca: marca
-                }, ).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -1138,7 +1144,7 @@ function ecoomerce(req, res) {
                 status: ['Activo'],
                 precio_ahora: { $gte: min, $lte: max },
 
-            }, ).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
+            },).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
                 if (err) {
                     res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                 } else {
@@ -1166,7 +1172,7 @@ function ecoomerce(req, res) {
                         precio_ahora: { $gte: min, $lte: max },
                         categoria: cat,
 
-                    }, ).populate('marca').populate('categoria').sort({ titulo: 1 }).exec((err, producto_data) => {
+                    },).populate('marca').populate('categoria').sort({ titulo: 1 }).exec((err, producto_data) => {
                         if (err) {
                             res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                         } else {
@@ -1184,7 +1190,7 @@ function ecoomerce(req, res) {
                         precio_ahora: { $gte: min, $lte: max },
                         categoria: cat,
                         marca: marca
-                    }, ).populate('marca').populate('categoria').sort({ titulo: 1 }).exec((err, producto_data) => {
+                    },).populate('marca').populate('categoria').sort({ titulo: 1 }).exec((err, producto_data) => {
                         if (err) {
                             res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                         } else {
@@ -1204,7 +1210,7 @@ function ecoomerce(req, res) {
                         precio_ahora: { $gte: min, $lte: max },
                         categoria: cat,
 
-                    }, ).populate('marca').populate('categoria').sort({ titulo: -1 }).exec((err, producto_data) => {
+                    },).populate('marca').populate('categoria').sort({ titulo: -1 }).exec((err, producto_data) => {
                         if (err) {
                             res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                         } else {
@@ -1222,7 +1228,7 @@ function ecoomerce(req, res) {
                         precio_ahora: { $gte: min, $lte: max },
                         categoria: cat,
                         marca: marca
-                    }, ).populate('marca').populate('categoria').sort({ titulo: -1 }).exec((err, producto_data) => {
+                    },).populate('marca').populate('categoria').sort({ titulo: -1 }).exec((err, producto_data) => {
                         if (err) {
                             res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                         } else {
@@ -1241,7 +1247,7 @@ function ecoomerce(req, res) {
                         status: ['Activo'],
                         precio_ahora: { $gte: min, $lte: max },
                         categoria: cat,
-                    }, ).populate('marca').populate('categoria').sort({ rating: -1 }).exec((err, producto_data) => {
+                    },).populate('marca').populate('categoria').sort({ rating: -1 }).exec((err, producto_data) => {
                         if (err) {
                             res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                         } else {
@@ -1259,7 +1265,7 @@ function ecoomerce(req, res) {
                         precio_ahora: { $gte: min, $lte: max },
                         categoria: cat,
                         marca: marca
-                    }, ).populate('marca').populate('categoria').sort({ rating: -1 }).exec((err, producto_data) => {
+                    },).populate('marca').populate('categoria').sort({ rating: -1 }).exec((err, producto_data) => {
                         if (err) {
                             res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                         } else {
@@ -1278,7 +1284,7 @@ function ecoomerce(req, res) {
                         status: ['Activo'],
                         precio_ahora: { $gte: min, $lte: max },
                         categoria: cat,
-                    }, ).populate('marca').populate('categoria').sort({ precio_ahora: 1 }).exec((err, producto_data) => {
+                    },).populate('marca').populate('categoria').sort({ precio_ahora: 1 }).exec((err, producto_data) => {
                         if (err) {
                             res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                         } else {
@@ -1296,7 +1302,7 @@ function ecoomerce(req, res) {
                         precio_ahora: { $gte: min, $lte: max },
                         categoria: cat,
                         marca: marca
-                    }, ).populate('marca').populate('categoria').sort({ precio_ahora: 1 }).exec((err, producto_data) => {
+                    },).populate('marca').populate('categoria').sort({ precio_ahora: 1 }).exec((err, producto_data) => {
                         if (err) {
                             res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                         } else {
@@ -1315,7 +1321,7 @@ function ecoomerce(req, res) {
                         status: ['Activo'],
                         precio_ahora: { $gte: min, $lte: max },
                         categoria: cat,
-                    }, ).populate('marca').populate('categoria').sort({ precio_ahora: -1 }).exec((err, producto_data) => {
+                    },).populate('marca').populate('categoria').sort({ precio_ahora: -1 }).exec((err, producto_data) => {
                         if (err) {
                             res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                         } else {
@@ -1333,7 +1339,7 @@ function ecoomerce(req, res) {
                         precio_ahora: { $gte: min, $lte: max },
                         categoria: cat,
                         marca: marca
-                    }, ).populate('marca').populate('categoria').sort({ precio_ahora: -1 }).exec((err, producto_data) => {
+                    },).populate('marca').populate('categoria').sort({ precio_ahora: -1 }).exec((err, producto_data) => {
                         if (err) {
                             res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                         } else {
@@ -1352,7 +1358,7 @@ function ecoomerce(req, res) {
                         status: ['Activo'],
                         precio_ahora: { $gte: min, $lte: max },
                         categoria: cat
-                    }, ).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
+                    },).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
                         if (err) {
                             res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                         } else {
@@ -1370,7 +1376,7 @@ function ecoomerce(req, res) {
                         precio_ahora: { $gte: min, $lte: max },
                         categoria: cat,
                         marca: marca
-                    }, ).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
+                    },).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
                         if (err) {
                             res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                         } else {
@@ -1388,7 +1394,7 @@ function ecoomerce(req, res) {
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
                     categoria: cat
-                }, ).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -1407,7 +1413,7 @@ function ecoomerce(req, res) {
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
                     subcategoria: new RegExp(sub, 'i')
-                }, ).populate('marca').populate('categoria').sort({ titulo: 1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ titulo: 1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -1424,7 +1430,7 @@ function ecoomerce(req, res) {
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
                     subcategoria: new RegExp(sub, 'i')
-                }, ).populate('marca').populate('categoria').sort({ titulo: -1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ titulo: -1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -1441,7 +1447,7 @@ function ecoomerce(req, res) {
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
                     subcategoria: new RegExp(sub, 'i')
-                }, ).populate('marca').populate('categoria').sort({ rating: -1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ rating: -1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -1458,7 +1464,7 @@ function ecoomerce(req, res) {
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
                     subcategoria: new RegExp(sub, 'i')
-                }, ).populate('marca').populate('categoria').sort({ precio_ahora: 1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ precio_ahora: 1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -1475,7 +1481,7 @@ function ecoomerce(req, res) {
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
                     subcategoria: new RegExp(sub, 'i')
-                }, ).populate('marca').populate('categoria').sort({ precio_ahora: -1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ precio_ahora: -1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -1492,7 +1498,7 @@ function ecoomerce(req, res) {
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
                     subcategoria: new RegExp(sub, 'i')
-                }, ).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -1509,7 +1515,7 @@ function ecoomerce(req, res) {
                     status: ['Activo'],
                     precio_ahora: { $gte: min, $lte: max },
                     subcategoria: new RegExp(sub, 'i')
-                }, ).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
+                },).populate('marca').populate('categoria').sort({ createdAt: -1 }).exec((err, producto_data) => {
                     if (err) {
                         res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
                     } else {
@@ -1530,6 +1536,161 @@ function ecoomerce(req, res) {
 }
 
 
+// ==========================================
+// MERCADO LIBRE CONTROLADORES CORREGIDOS
+// ==========================================
+
+async function exportarAMercadoLibre(req, res) {
+    try {
+        const { id_producto } = req.params;
+
+        // El token limpio ya viene inyectado desde tu middleware modular checkMlToken
+        const accessToken = req.accessTokenMercadoLibre;
+
+        if (!accessToken) {
+            return res.status(401).json({ mensaje: 'No estás vinculado o autorizado con Mercado Libre.' });
+        }
+
+        const productoLocal = await Producto.findById(id_producto)
+            .populate('categoria')
+            .populate('local');
+
+        // Deduciomos el site_id (ej: 'MLV') usando el país del local
+        const { site_id } = obtenerConfiguracionPorPais(productoLocal.local?.pais);
+
+
+        // Validamos que el ID de la categoría coincida con el prefijo del país de la tienda
+        const categoriaML = productoLocal.categoria.mercadolibre_category_id; // ej: "MLV1430"
+        if (!categoriaML.startsWith(site_id)) {
+            return res.status(400).json({
+                mensaje: `Conflicto de región: La categoría configurada (${categoriaML}) no pertenece al país de tu tienda (${site_id}).`
+            });
+        }
+
+        if (!productoLocal) {
+            return res.status(404).json({ mensaje: 'El producto seleccionado no existe.' });
+        }
+
+        if (!productoLocal.categoria || !productoLocal.categoria.mercadolibre_category_id) {
+            return res.status(400).json({
+                mensaje: 'La categoría de este producto aún no está vinculada a un ID de categoría de Mercado Libre.'
+            });
+        }
+
+        if (productoLocal.precio_ahora < 1) {
+            return res.status(400).json({
+                mensaje: 'Mercado Libre Venezuela exige un precio mínimo de venta de 1.00 USD.'
+            });
+        }
+
+        const monedaTienda = productoLocal.local && productoLocal.local.moneda ? productoLocal.local.moneda : 'USD';
+
+        const jsonMercadoLibre = {
+            title: productoLocal.titulo.es,
+            category_id: productoLocal.categoria.mercadolibre_category_id,
+            price: productoLocal.precio_ahora,
+            currency_id: monedaTienda,
+            available_quantity: productoLocal.stock,
+            buying_mode: "buy_it_now",
+            condition: "new",
+            listing_type_id: "gold_special",
+            description: {
+                plain_text: productoLocal.detalle.es
+            },
+            pictures: [
+                { source: productoLocal.img }
+            ]
+        };
+
+        if (productoLocal.mercadolibre && productoLocal.mercadolibre.id) {
+            const mlId = productoLocal.mercadolibre.id;
+
+            // 🛠️ URL Oficial de la API corregida usando template literals con backticks (`)
+            await axios.put(`https://mercadolibre.com{mlId}`, jsonMercadoLibre, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+
+            productoLocal.mercadolibre.last_sync = new Date();
+            await productoLocal.save();
+
+            return res.json({
+                success: true,
+                mensaje: 'La publicación de Mercado Libre ha sido actualizada correctamente.',
+                ml_id: mlId
+            });
+        } else {
+            // 🛠️ URL Oficial de la API corregida para creación
+            const respuestaML = await axios.post('https://mercadolibre.com', jsonMercadoLibre, {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+
+            productoLocal.mercadolibre = {
+                id: respuestaML.data.id,
+                status: respuestaML.data.status,
+                last_sync: new Date()
+            };
+            await productoLocal.save();
+
+            return res.json({
+                success: true,
+                mensaje: '¡Producto exportado e indexado con éxito en Mercado Libre Venezuela!',
+                ml_id: respuestaML.data.id
+            });
+        }
+
+    } catch (error) {
+        console.error('Error de Sincronización Mercado Libre:', error.response?.data || error.message);
+        return res.status(500).json({
+            mensaje: 'No se pudo sincronizar el producto con Mercado Libre.',
+            detalles: error.response?.data || error.message
+        });
+    }
+}
+
+async function actualizarStockYPrecioEnML(id_producto) {
+    try {
+        const producto = await Producto.findById(id_producto).populate('local');
+
+        if (!producto || !producto.mercadolibre || !producto.mercadolibre.id) return;
+
+        const configML = await MercadoLibreConfig.findOne({ tienda: producto.local._id });
+        if (!configML) return;
+
+        let token = configML.access_token;
+        const ahora = new Date();
+        if (ahora.getTime() >= (configML.expires_at.getTime() - (5 * 60 * 1000))) {
+            const respuestaML = await axios.post('https://mercadolibre.com', null, {
+                params: {
+                    grant_type: 'refresh_token',
+                    client_id: configML.client_id,       // 👈 Cambiado a dinámico de la BD de la tienda
+                    client_secret: configML.client_secret, // 👈 Cambiado a dinámico de la BD de la tienda
+                    refresh_token: configML.refresh_token
+                }
+            });
+            configML.access_token = respuestaML.data.access_token;
+            configML.refresh_token = respuestaML.data.refresh_token;
+            configML.expires_at = new Date(Date.now() + respuestaML.data.expires_in * 1000);
+            await configML.save();
+            token = configML.access_token;
+        }
+
+        const mlItemId = producto.mercadolibre.id;
+        // 🛠️ URL Oficial de la API corregida para actualizar stock/precio de forma parcial
+        await axios.put(`https://mercadolibre.com{mlItemId}`, {
+            price: producto.precio_ahora,
+            available_quantity: producto.stock
+        }, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        producto.mercadolibre.last_sync = new Date();
+        await producto.save();
+        console.log(`[SaaS Sync] Producto ${id_producto} sincronizado automáticamente en ML.`);
+
+    } catch (error) {
+        console.error(`[SaaS Sync Error] Error al sincronizar el producto ${id_producto}:`, error.response?.data || error.message);
+    }
+}
 
 module.exports = {
     getProductos,
@@ -1568,6 +1729,7 @@ module.exports = {
     getProductosTiendaId,
     getProductosTiendaIdActive,
     reducir_stock_internal,
-
+    exportarAMercadoLibre,
+    actualizarStockYPrecioEnML
 
 };

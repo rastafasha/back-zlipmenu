@@ -40,6 +40,13 @@ var ProductoSchema = Schema({
     ventas: { type: Number },
     isFeatured: { type: Boolean, required: false },
     status: { type: String, required: false, default: 'Desactivado' },
+
+    // 🎯 NUEVOS CAMPOS PARA MERCADO LIBRE
+    mercadolibre: {
+        id: { type: String, default: null },          // Guardará el ID de ML (ej: "MLA123456789")
+        status: { type: String, default: 'not_synced' },// 'not_synced', 'active', 'paused', etc.
+        last_sync: { type: Date, default: null }       // Fecha de la última sincronización
+    },
     createdAt: { type: Date, default: Date.now, required: true },
     updatedAt: { type: Date }
 });

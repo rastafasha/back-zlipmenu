@@ -26,7 +26,7 @@ router.get('/', getPresupuestos);
 
 
 router.post('/crear', [
-    validarJWT,
+    // validarJWT,
     validarCampos
 ], crearCotizacionCatering);
 

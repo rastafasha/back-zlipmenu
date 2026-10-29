@@ -38,12 +38,17 @@ const {
     listar_productosColor,
     listar_productosCategNombre,
     getProductosTiendaId,
-    getProductosTiendaIdActive
+    getProductosTiendaIdActive,
+    exportarAMercadoLibre
 
 } = require('../controllers/productoController');
 const { validarJWT } = require('../middlewares/validar-jwt');
 const { check } = require('express-validator');
 const { validarCampos } = require('../middlewares/validar-campos');
+
+// 🎯 El middleware de renovación automática se ejecuta ANTES del controlador
+const { verificarYRenovarTokenML } = require('../middlewares/checkMlToken');
+
 
 router.get('/', getProductos);
 router.get('/activos', getProductosActivos);
@@ -53,6 +58,14 @@ router.post('/store', [
     validarJWT,
     validarCampos
 ], crearProducto);
+
+router.post(
+    '/exportar-mercadolibre/:id_producto', 
+    validarJWT,            // 1. Verifica que el usuario del Admin esté logueado
+    verificarYRenovarTokenML,  // 2. Busca, valida o refresca el token de ML de esa tienda en particular
+    exportarAMercadoLibre // 3. Envía el JSON limpio y procesa la publicación
+);
+
 
 router.put('/update/:id', [
     validarJWT,
