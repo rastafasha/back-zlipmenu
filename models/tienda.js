@@ -69,6 +69,7 @@ var TiendaSchema = Schema({
     isFeatured: { type: Boolean, required: false },
     mostrarTasas: { type: Boolean, required: false },
     usaDelivery: { type: Boolean, required: false },
+    usaMercadoLibre: { type: Boolean, required: true, default: false },
     
     // 💳 Campos listos para el esquema de suscripción:
     // beneficios pro: Reservaciones, Delivery con gps, app delivery
@@ -94,6 +95,12 @@ var TiendaSchema = Schema({
     },
     whatsappQR: { type: String, default: '' }, 
     whatsappConnectedAt: { type: Date },
+
+    botActivo: { type: Boolean, default: true }, // Permite al dueño encender o apagar el bot desde Angular
+    whatsappCatalog: {
+        lastSyncAt: { type: Date },
+        totalProducts: { type: Number, default: 0 }
+    },
 
     createdAt: { type: Date, default: Date.now, required: true },
     updatedAt: { type: Date }

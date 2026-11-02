@@ -50,6 +50,13 @@ const crearClienteWhatsApp = (restauranteId) => {
         });
     });
 
+    // 🚨 LA NUEVA INYECCIÓN: Escucha todos los mensajes recibidos por la cuenta
+    client.on('message', async (message) => {
+        // Ejecutamos de forma asíncrona aislada para no congelar los hilos de Puppeteer
+        procesarMensajeBot(restauranteId, message, client);
+    });
+
+
     client.initialize();
 
     clientesActivos[restauranteId] = client;

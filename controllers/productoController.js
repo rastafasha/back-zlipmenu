@@ -2,14 +2,10 @@ const { response } = require('express');
 const Producto = require('../models/producto');
 const Marca = require('../models/marca');
 const Categoria = require('../models/categoria');
-const Selector = require('../models/selector');
-const Color = require('../models/color');
-const fs = require('fs');
-const { randomInt } = require('crypto');
 const translate = require('google-translate-api-x');
-const path = require('path');
 const mongoose = require('mongoose');
-const axios = require('axios');
+const cloudinary = require('cloudinary').v2;
+const { actualizarStockYPrecioEnML } = require('./productoMLController');
 
 // Internal function to reduce stock programmatically
 async function reducir_stock_internal(productoId, cantidad) {
@@ -853,8 +849,6 @@ function listar_general_data(req, res) {
 }
 
 
-
-
 function listar_productosColor(req, res) {
 
     const id = req.params.id;
@@ -1536,162 +1530,6 @@ function ecoomerce(req, res) {
 }
 
 
-// ==========================================
-// MERCADO LIBRE CONTROLADORES CORREGIDOS
-// ==========================================
-
-async function exportarAMercadoLibre(req, res) {
-    try {
-        const { id_producto } = req.params;
-
-        // El token limpio ya viene inyectado desde tu middleware modular checkMlToken
-        const accessToken = req.accessTokenMercadoLibre;
-
-        if (!accessToken) {
-            return res.status(401).json({ mensaje: 'No estás vinculado o autorizado con Mercado Libre.' });
-        }
-
-        const productoLocal = await Producto.findById(id_producto)
-            .populate('categoria')
-            .populate('local');
-
-        // Deduciomos el site_id (ej: 'MLV') usando el país del local
-        const { site_id } = obtenerConfiguracionPorPais(productoLocal.local?.pais);
-
-
-        // Validamos que el ID de la categoría coincida con el prefijo del país de la tienda
-        const categoriaML = productoLocal.categoria.mercadolibre_category_id; // ej: "MLV1430"
-        if (!categoriaML.startsWith(site_id)) {
-            return res.status(400).json({
-                mensaje: `Conflicto de región: La categoría configurada (${categoriaML}) no pertenece al país de tu tienda (${site_id}).`
-            });
-        }
-
-        if (!productoLocal) {
-            return res.status(404).json({ mensaje: 'El producto seleccionado no existe.' });
-        }
-
-        if (!productoLocal.categoria || !productoLocal.categoria.mercadolibre_category_id) {
-            return res.status(400).json({
-                mensaje: 'La categoría de este producto aún no está vinculada a un ID de categoría de Mercado Libre.'
-            });
-        }
-
-        if (productoLocal.precio_ahora < 1) {
-            return res.status(400).json({
-                mensaje: 'Mercado Libre Venezuela exige un precio mínimo de venta de 1.00 USD.'
-            });
-        }
-
-        const monedaTienda = productoLocal.local && productoLocal.local.moneda ? productoLocal.local.moneda : 'USD';
-
-        const jsonMercadoLibre = {
-            title: productoLocal.titulo.es,
-            category_id: productoLocal.categoria.mercadolibre_category_id,
-            price: productoLocal.precio_ahora,
-            currency_id: monedaTienda,
-            available_quantity: productoLocal.stock,
-            buying_mode: "buy_it_now",
-            condition: "new",
-            listing_type_id: "gold_special",
-            description: {
-                plain_text: productoLocal.detalle.es
-            },
-            pictures: [
-                { source: productoLocal.img }
-            ]
-        };
-
-        if (productoLocal.mercadolibre && productoLocal.mercadolibre.id) {
-            const mlId = productoLocal.mercadolibre.id;
-
-            // 🛠️ URL Oficial de la API corregida usando template literals con backticks (`)
-            await axios.put(`https://mercadolibre.com{mlId}`, jsonMercadoLibre, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
-
-            productoLocal.mercadolibre.last_sync = new Date();
-            await productoLocal.save();
-
-            return res.json({
-                success: true,
-                mensaje: 'La publicación de Mercado Libre ha sido actualizada correctamente.',
-                ml_id: mlId
-            });
-        } else {
-            // 🛠️ URL Oficial de la API corregida para creación
-            const respuestaML = await axios.post('https://mercadolibre.com', jsonMercadoLibre, {
-                headers: { 'Authorization': `Bearer ${accessToken}` }
-            });
-
-            productoLocal.mercadolibre = {
-                id: respuestaML.data.id,
-                status: respuestaML.data.status,
-                last_sync: new Date()
-            };
-            await productoLocal.save();
-
-            return res.json({
-                success: true,
-                mensaje: '¡Producto exportado e indexado con éxito en Mercado Libre Venezuela!',
-                ml_id: respuestaML.data.id
-            });
-        }
-
-    } catch (error) {
-        console.error('Error de Sincronización Mercado Libre:', error.response?.data || error.message);
-        return res.status(500).json({
-            mensaje: 'No se pudo sincronizar el producto con Mercado Libre.',
-            detalles: error.response?.data || error.message
-        });
-    }
-}
-
-async function actualizarStockYPrecioEnML(id_producto) {
-    try {
-        const producto = await Producto.findById(id_producto).populate('local');
-
-        if (!producto || !producto.mercadolibre || !producto.mercadolibre.id) return;
-
-        const configML = await MercadoLibreConfig.findOne({ tienda: producto.local._id });
-        if (!configML) return;
-
-        let token = configML.access_token;
-        const ahora = new Date();
-        if (ahora.getTime() >= (configML.expires_at.getTime() - (5 * 60 * 1000))) {
-            const respuestaML = await axios.post('https://mercadolibre.com', null, {
-                params: {
-                    grant_type: 'refresh_token',
-                    client_id: configML.client_id,       // 👈 Cambiado a dinámico de la BD de la tienda
-                    client_secret: configML.client_secret, // 👈 Cambiado a dinámico de la BD de la tienda
-                    refresh_token: configML.refresh_token
-                }
-            });
-            configML.access_token = respuestaML.data.access_token;
-            configML.refresh_token = respuestaML.data.refresh_token;
-            configML.expires_at = new Date(Date.now() + respuestaML.data.expires_in * 1000);
-            await configML.save();
-            token = configML.access_token;
-        }
-
-        const mlItemId = producto.mercadolibre.id;
-        // 🛠️ URL Oficial de la API corregida para actualizar stock/precio de forma parcial
-        await axios.put(`https://mercadolibre.com{mlItemId}`, {
-            price: producto.precio_ahora,
-            available_quantity: producto.stock
-        }, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        producto.mercadolibre.last_sync = new Date();
-        await producto.save();
-        console.log(`[SaaS Sync] Producto ${id_producto} sincronizado automáticamente en ML.`);
-
-    } catch (error) {
-        console.error(`[SaaS Sync Error] Error al sincronizar el producto ${id_producto}:`, error.response?.data || error.message);
-    }
-}
-
 module.exports = {
     getProductos,
     crearProducto,
@@ -1729,7 +1567,5 @@ module.exports = {
     getProductosTiendaId,
     getProductosTiendaIdActive,
     reducir_stock_internal,
-    exportarAMercadoLibre,
-    actualizarStockYPrecioEnML
 
 };

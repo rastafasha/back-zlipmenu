@@ -39,15 +39,56 @@ const {
     listar_productosCategNombre,
     getProductosTiendaId,
     getProductosTiendaIdActive,
-    exportarAMercadoLibre
 
 } = require('../controllers/productoController');
+
+const {
+     exportarAMercadoLibre,
+} = require('../controllers/productoMLController');
+
+const {
+     importarProductosExcel,
+    vincularImagenesMasivas,
+    descargarPlantillaExcel
+} = require('../controllers/productoMasivoController');
+
 const { validarJWT } = require('../middlewares/validar-jwt');
 const { check } = require('express-validator');
 const { validarCampos } = require('../middlewares/validar-campos');
 
 // 🎯 El middleware de renovación automática se ejecuta ANTES del controlador
 const { verificarYRenovarTokenML } = require('../middlewares/checkMlToken');
+
+
+
+// 📄 1. Descargar Plantilla Excel de ejemplo
+router.post('/descargar-plantilla', [
+    validarJWT,
+    validarCampos
+], descargarPlantillaExcel);
+
+// 📥 2. Procesar e importar el archivo Excel (Genera productos + traducciones por IA)
+router.post('/importar-excel', [
+    validarJWT,
+    validarCampos
+], importarProductosExcel);
+
+// 📸 3. Subida masiva de imágenes (Cruce con Cloudinary y activación automática)
+router.post('/importar-imagenes', [
+    validarJWT,
+    validarCampos
+], vincularImagenesMasivas);
+
+// mercadolibre
+
+router.post(
+    '/exportar-mercadolibre/:id_producto', 
+    validarJWT,            // 1. Verifica que el usuario del Admin esté logueado
+    verificarYRenovarTokenML,  // 2. Busca, valida o refresca el token de ML de esa tienda en particular
+    exportarAMercadoLibre // 3. Envía el JSON limpio y procesa la publicación
+);
+
+// 
 
 
 router.get('/', getProductos);
@@ -58,13 +99,6 @@ router.post('/store', [
     validarJWT,
     validarCampos
 ], crearProducto);
-
-router.post(
-    '/exportar-mercadolibre/:id_producto', 
-    validarJWT,            // 1. Verifica que el usuario del Admin esté logueado
-    verificarYRenovarTokenML,  // 2. Busca, valida o refresca el token de ML de esa tienda en particular
-    exportarAMercadoLibre // 3. Envía el JSON limpio y procesa la publicación
-);
 
 
 router.put('/update/:id', [
@@ -128,10 +162,6 @@ router.get('/productos_general/destacado/', destacado);
 router.get('/productos_general/cat/:id', listar_productosCateg);
 router.get('/productos_general/color/:id', listar_productosColor);
 router.get('/categoria_nombre/cat/:name', listar_productosCategNombre);
-
-
-
-
 
 
 module.exports = router;

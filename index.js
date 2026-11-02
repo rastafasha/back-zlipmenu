@@ -7,6 +7,7 @@ const path = require('path');
 const socketIO = require('socket.io');
 
 require('./config/recordatorios-cron');
+const inicializarCronWhatsApp = require('./services/whatsapp-sync.service'); // Import the WhatsApp sync service to initialize it
 
 // Check if we're running on a serverless platform
 const isServerless = process.env.RENDER === '1' || process.env.VERCEL === '1';
@@ -84,6 +85,10 @@ module.exports.io = io;
 //lectura y parseo del body
 app.use(express.json());
 
+
+// 🚨 VARIABLE GLOBAL donde guardas tus instancias de whatsapp-web.js por restauranteId
+global.clientesActivos = {}; 
+
 // Wrap everything in async function to properly await dbConnection
 const startServer = async () => {
     //db
@@ -154,6 +159,7 @@ const startServer = async () => {
     app.use('/api/tasas', require('./routes/tasas'));
 
     app.use('/api/meli', require('./routes/mercadolibre'));
+    app.use('/api/whatsapp', require('./routes/whatsapp'));
 
     //notification
     const vapidKeys = {
@@ -222,6 +228,8 @@ if (process.env.VERCEL !== '1') {
 if (typeof serverless !== 'undefined' && serverless) {
     module.exports.handler = serverless(app);
 }
+
+
 // Export app for testing and other uses
 module.exports = { app, server, io };
 

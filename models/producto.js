@@ -41,6 +41,13 @@ var ProductoSchema = Schema({
     isFeatured: { type: Boolean, required: false },
     status: { type: String, required: false, default: 'Desactivado' },
 
+    condition: {
+        type: String,
+        enum: ['new', 'used'],
+        default: 'new',
+        required: true
+    },
+
     // 🎯 NUEVOS CAMPOS PARA MERCADO LIBRE
     mercadolibre: {
         id: { type: String, default: null },          // Guardará el ID de ML (ej: "MLA123456789")

@@ -57,18 +57,28 @@ const fileUpload = async (req, res = response) => {
     }
 
     try {
-        // 5. Convertir el Buffer a Data URI (Evita usar el disco duro de Render)
+        // 5. Convertir el Buffer a Data URI
         const base64Image = Buffer.from(file.data).toString('base64');
         const dataURI = `data:${file.mimetype};base64,${base64Image}`;
 
-        // 6. Subir a Cloudinary con Transformaciones Automáticas
+        // 🛠️ NUEVO: Extraer y limpiar el nombre original del archivo (Sin extensión y sin espacios)
+        const nombreOriginalSinExt = file.name.substring(0, file.name.lastIndexOf('.'))
+            .toLowerCase()
+            .trim()
+            .replace(/[\s]+/g, '_')       // Espacios por guiones bajos
+            .replace(/[^\w\-]+/g, '');     // Elimina caracteres especiales
+
+        // Construimos un public_id identificable: ID del registro + Nombre Original Limpio
+        const nombreSeguroIdentificable = `${id}_${nombreOriginalSinExt}`;
+
+        // 6. Subir a Cloudinary con Nombre Legible y Seguro
         const result = await cloudinary.uploader.upload(dataURI, {
             folder: `zlipmenu/uploads/${tipo}/`,
-            public_id: uuidv4(),
+            public_id: nombreSeguroIdentificable, // ✅ Mantiene el nombre real identificable por registro/SaaS
             transformation: [
-                { width: 1000, crop: "limit" }, // Redimensiona si es gigante
-                { quality: "auto" },            // Compresión inteligente (ahorra mucho ancho de banda)
-                { fetch_format: "auto" }        // Entrega el mejor formato según el navegador del cliente
+                { width: 1000, crop: "limit" }, 
+                { quality: "auto" },            
+                { fetch_format: "auto" }        
             ]
         });
 

@@ -27,15 +27,16 @@ const verificarYRenovarTokenML = async (req, res, next) => {
         const ahora = new Date();
         const margenSeguridad = 5 * 60 * 1000; 
 
-        if (ahora.getTime() >= (configML.expires_at.getTime() - margenSeguridad)) {
+        // Si el token ya venció o está a menos de 5 minutos de expirar, lo renovamos en caliente
+        if (!configML.expires_at || ahora.getTime() >= (configML.expires_at.getTime() - margenSeguridad)) {
             console.log(`[SaaS Multi-Tenant] Renovando token para la tienda: ${id_tienda}`);
 
-            // 🚀 USAMOS LAS CREDENCIALES DEL CLIENTE DESDE LA BASE DE DATOS
+            // 🛠️ CORREGIDO: Endpoint oficial global para el intercambio de tokens de Mercado Libre
             const respuestaML = await axios.post('https://mercadolibre.com', null, {
                 params: {
                     grant_type: 'refresh_token',
-                    client_id: configML.client_id,        // 👈 Desde Mongoose
-                    client_secret: configML.client_secret,  // 👈 Desde Mongoose
+                    client_id: configML.client_id,        
+                    client_secret: configML.client_secret,  
                     refresh_token: configML.refresh_token
                 }
             });
@@ -48,12 +49,13 @@ const verificarYRenovarTokenML = async (req, res, next) => {
             await configML.save();
         }
 
+        // Inyectamos el token limpio y verificado en la petición de Express para que lo use el exportador de productos
         req.accessTokenMercadoLibre = configML.access_token;
         next();
 
     } catch (error) {
         console.error('Error en middleware multi-tenant ML:', error.response?.data || error.message);
-        return res.status(401).json({ ok: false, msg: 'La conexión con Mercado Libre ha caducado. Vuelve a enlazar tu cuenta.' });
+        return res.status(401).json({ ok: false, msg: 'La conexión con Mercado Libre ha caducado o es inválida. Vuelve a enlazar tu cuenta.' });
     }
 };
 
