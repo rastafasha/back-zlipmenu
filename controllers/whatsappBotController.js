@@ -4,54 +4,92 @@ const translate = require('google-translate-api-x');
 const axios = require('axios');
 const cloudinary = require('cloudinary').v2;
 
+
+/**
+ * Función auxiliar para detectar si un mensaje entrante es una comanda generada por el frontend
+ */
+const esUnPedidoFormateado = (texto) => {
+    const Lower = texto.toLowerCase();
+    // Identifica patrones comunes de las plantillas de texto de tu carrito
+    return (lower.includes('pedido') || lower.includes('orden')) && 
+           (lower.includes('total') || lower.includes('subtotal')) &&
+           (lower.includes('x1') || lower.includes('x2') || lower.includes('cantidad'));
+};
+
+
 /**
  * Maneja los mensajes entrantes de los clientes finales para un local específico
  * @param {string} idLocal - ID de la tienda dueña de la sesión
  * @param {Object} message - Objeto message provisto por whatsapp-web.js
  * @param {Object} client - Instancia activa de whatsapp-web.js para este local
  */
-export const procesarMensajeBot = async (idLocal, message, client) => {
-    // Evitar procesar mensajes de grupos o estados para ahorrar recursos
+
+
+/**
+ * Procesa en tiempo real los mensajes entrantes de los clientes finales
+ */
+const procesarMensajeBot = async (idLocal, message, client) => {
     if (message.isGroup || message.from === 'status@broadcast') return;
 
-    const textoUsuario = message.body.toLowerCase().trim();
-    const remitente = message.from; // JID del cliente (ej: 54911xxxxxxx@c.us)
+    const textoOriginal = message.body; 
+    const textoUsuario = textoOriginal.toLowerCase().trim();
+    const remitente = message.from; 
 
     try {
-        // 1. Validar si la tienda tiene el bot activo (Flujo Multi-Tenant)
+        // 1. Traer la tienda de la base de datos
         const tienda = await Tienda.findById(idLocal);
         if (!tienda || !tienda.botActivo) return; 
 
-        // 2. MENU PRINCIPAL: Disparadores comunes (hola, buenas, menu, carta, etc.)
-        const palabrasClaveMenu = ['hola', 'buenas', 'menu', 'carta', 'pedir', 'precios', 'comenzar'];
+        // 🚀 CONSTRUCCIÓN 100% DINÁMICA DEL SUBDOMINIO DESDE EL SLUG
+        // Usamos directamente tu propiedad nativa tienda.slug para inyectarla en la URL
+        const urlTienda = `https://${tienda.slug.trim().toLowerCase()}.zlipmenu.com`;
+
+        // =========================================================================
+        // 🚨 INTERCEPTOR: DETECCIÓN DE COMANDAS DESDE TU FRONTEND EN ANGULAR
+        // =========================================================================
+        if (esUnPedidoFormateado(textoOriginal)) {
+            console.log(`🛒 [Bot] Comanda detectada dinámicamente en: ${urlTienda}`);
+
+            const mensajeConfirmacion = 
+                `🎉 *¡Pedido Recibido Exitosamente!* 🎉\n\n` +
+                `Gracias por elegir *${tienda.nombre || 'nuestro local'}*. Hemos procesado tu orden enviada desde nuestra plataforma web.\n\n` +
+                `⏳ *Estado:* En preparación\n` +
+                `👤 *Cliente:* Hemos asociado tu orden a este número de WhatsApp.\n\n` +
+                `🔔 Te notificaremos por aquí en cuanto tu pedido salga de la cocina o esté listo. ¡Muchas gracias! ✨`;
+
+            await client.sendMessage(remitente, mensajeConfirmacion);
+            return; 
+        }
+
+        // =========================================================================
+        // DISPARADORES DE MENÚ PRINCIPAL TRADICIONAL
+        // =========================================================================
+        const palabrasClaveMenu = ['hola', 'buenas', 'menu', 'carta', 'pedir', 'precios', 'comenzar', 'start'];
         
         if (palabrasClaveMenu.some(palabra => textoUsuario.includes(palabra))) {
-            
-            // Buscamos una pequeña muestra de productos destacados en la BD para sugerir
-            const productosDestacados = await Producto.find({ local: idLocal, disponibilidad: true })
+            const destacados = await Producto.find({ local: idLocal, disponibilidad: true })
                 .limit(3)
                 .select('titulo precio');
 
-            let listaProductos = '';
-            productosDestacados.forEach(p => {
-                listaProductos += `\n• *${p.titulo.es}* - $${p.precio}`;
+            let listaDestacados = '';
+            destacados.forEach(p => {
+                listaDestacados += `\n• *${p.titulo.es}* - $${p.precio}`;
             });
 
-            const urlMenuDigital = `https://zlipmenu.com{tienda.slug}`;
-
             const mensajeBienvenida = 
-                `👋 ¡Hola! Bienvenido a *${tienda.nombre || 'nuestro restaurante'}* 🌟\n\n` +
-                `Te presento nuestro menú digital interactivo donde puedes armar tu pedido con variantes y modificadores:\n` +
-                `🔗 *${urlMenuDigital}*\n\n` +
-                `📋 *Algunos de nuestros platos de hoy:*${listaProductos}\n\n` +
-                `👉 Si buscas algo en específico, solo escribe el nombre del plato (ej: _Hamburguesa_).`;
+                `👋 ¡Hola! Bienvenido a *${tienda.nombre || 'nuestro comercio'}* 🌟\n\n` +
+                `Te invito a ver nuestro catálogo digital interactivo en nuestro sitio web oficial:\n` +
+                `🔗 *${urlTienda}*\n\n` +
+                `📋 *Algunas sugerencias de hoy:*${listaDestacados}\n\n` +
+                `👉 Si buscas algo en específico, solo escribe su nombre (ej: _Hamburguesa_, _Alimento_, etc.).`;
 
             await client.sendMessage(remitente, mensajeBienvenida);
             return;
         }
 
-        // 3. MOTOR DE BÚSQUEDA INTELIGENTE DE PLATOS
-        // Si el usuario escribe palabras sueltas, buscamos coincidencias parciales (regex) en Mongoose
+        // =========================================================================
+        // MOTOR DE BÚSQUEDA INTEGRADO (Redirección exacta al subdominio del local)
+        // =========================================================================
         if (textoUsuario.length > 2) {
             const busquedaRegEx = new RegExp(textoUsuario, 'i');
             
@@ -62,58 +100,63 @@ export const procesarMensajeBot = async (idLocal, message, client) => {
             }).limit(3);
 
             if (productosEncontrados.length > 0) {
-                await client.sendMessage(remitente, `🔍 Encontré estas opciones para ti en nuestro menú:`);
+                await client.sendMessage(remitente, `🔍 He encontrado estas opciones para ti:`);
 
                 for (const prod of productosEncontrados) {
-                    // Si el producto fue sincronizado desde el catálogo de WhatsApp, enviamos la tarjeta nativa
                     if (prod.whatsappProductId) {
                         try {
-                            // Estructura oficial de whatsapp-web.js para reenviar productos nativos del catálogo del negocio
                             await client.sendMessage(remitente, {
                                 type: 'product',
                                 productId: prod.whatsappProductId,
                                 businessOwnerJid: client.info.wid._serialized
                             });
-                            continue; // Pasa al siguiente producto
+                            continue; 
                         } catch (errProduct) {
-                            console.error(`⚠️ Error al enviar tarjeta nativa de WA para producto ${prod._id}:`, errProduct.message);
+                            console.error(`⚠️ Error al enviar tarjeta nativa de WA:`, errProduct.message);
                         }
                     }
 
-                    // Si no tiene tarjeta nativa o falla, enviamos un bloque de texto formateado con su imagen de Cloudinary
-                    const detalleProducto = 
-                        `🍔 *${prod.titulo.es}*\n` +
+                    // Genera el enlace apuntando al subdominio correspondiente (ej: https://zlipmenu.com)
+                    const urlProducto = `${urlTienda}/${prod.slug}`;
+
+                    const detalleTexto = 
+                        `📦 *${prod.titulo.es}*\n` +
                         `💵 Precio: $${prod.precio}\n` +
                         `📝 ${prod.info_short.es || 'Sin descripción disponible.'}\n\n` +
-                        `Pídelo completo aquí: https://zlipmenu.com{tienda.slug}/${prod.slug}`;
+                        `🛒 Ordénalo aquí: ${urlProducto}`;
 
                     if (prod.img) {
-                        // Enviar con foto si existe en Cloudinary
-                        const { default: MessageMedia } = await import('whatsapp-web.js');
                         try {
+                            const { MessageMedia } = require('whatsapp-web.js');
                             const media = await MessageMedia.fromUrl(prod.img);
-                            await client.sendMessage(remitente, media, { caption: detalleProducto });
+                            await client.sendMessage(remitente, media, { caption: detalleTexto });
                         } catch (imgErr) {
-                            await client.sendMessage(remitente, detalleProducto);
+                            await client.sendMessage(remitente, detalleTexto);
                         }
                     } else {
-                        await client.sendMessage(remitente, detalleProducto);
+                        await client.sendMessage(remitente, detalleTexto);
                     }
                 }
                 return;
             }
         }
 
-        // 4. RESPUESTA POR DEFECTO (Fallback si el bot no entiende la frase)
-        const mensajeFallback = 
-            `🤖 No logré entender tu mensaje, pero no te preocupes.\n\n` +
-            `Puedes ver toda nuestra variedad, precios y realizar tu orden directamente desde nuestro menú digital en el siguiente enlace:\n` +
-            `🔗 https://zlipmenu.com{tienda.slug}\n\n` +
-            `¡Es más rápido y seguro! Escibe *Menú* si deseas reiniciar el asistente.`;
+        // =========================================================================
+        // FALLBACK GENERAL
+        // =========================================================================
+        const mensajeDefault = 
+            `🤖 No logré comprender tu mensaje, pero no te preocupes.\n\n` +
+            `Puedes acceder directamente a toda nuestra variedad, imágenes y precios desde nuestro sitio oficial:\n` +
+            `🔗 ${urlTienda}\n\n` +
+            `¡Es la forma más rápida de comprar! Si quieres reiniciar este chat escribe *Menú*.`;
 
-        await client.sendMessage(remitente, mensajeFallback);
+        await client.sendMessage(remitente, mensajeDefault);
 
     } catch (error) {
         console.error(`❌ Error en el flujo del Bot de WhatsApp para el local ${idLocal}:`, error);
     }
+};
+
+module.exports = {
+    procesarMensajeBot
 };

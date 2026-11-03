@@ -3,9 +3,9 @@ const { Schema, model } = require('mongoose');
 const PedidoMenuSchema = Schema({
    
    user: { type: Schema.ObjectId, ref: 'user', require: true  },
-  
     pedidoList: { type: Array, require: true },
     delivery: { type: String, require: false },
+    nroPedido: { type: String, require: false },
     costodelivery: { type: String, require: false },
     deliveryAddres: { type: String, require: false },
     asignado: { type: Boolean, require: true, default: false },

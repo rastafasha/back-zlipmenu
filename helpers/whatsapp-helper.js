@@ -2,6 +2,8 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 // Usamos el nombre correcto de tu modelo de MongoDB
 const Tienda = require('../models/tienda'); 
+const { procesarMensajeBot } = require('../controllers/whatsappBotController'); // Ajusta la ruta exacta
+
 
 const clientesActivos = {};
 
