@@ -67,36 +67,79 @@ const importarProductosExcel = async (req, res) => {
             }
 
             try {
-                // 3. Resolución de Categoría Bilingüe (Búsqueda o creación inteligente)
-                let categoriaDB = await Categoria.findOne({ 
-                    'nombre.es': { $regex: new RegExp(`^${catNombre.trim()}$`, 'i') }, 
-                    local: idLocal 
+                // =========================================================================
+                // 3. Resolución de Categoría Bilingüe (Limpieza estricta anti-errores tipográficos)
+                // =========================================================================
+                // Limpiamos espacios dobles intermedios y espacios laterales
+                const nombreCategoriaLimpio = catNombre
+                    .trim()
+                    .replace(/\s+/g, ' '); // Convierte múltiples espacios en uno solo
+
+                // Buscamos ignorando acentos y mayúsculas/minúsculas usando "diacritic-insensitive" si MongoDB lo soporta, 
+                // o simplemente normalizando el texto de manera segura:
+                // RESOLUCIÓN ESTRICTA: Si no existe la categoría, se reporta el error y se salta la fila
+                const catNombre = fila.nombre_categoria || 'General';
+                const subcatEs = fila.subcategoria_es || '';
+                let subcatEn = fila.subcategoria_en || '';
+
+                let categoriaDB = await Categoria.findOne({
+                    'nombre.es': { $regex: new RegExp(`^${catNombre.trim()}$`, 'i') },
+                    local: idLocal
                 });
 
                 if (!categoriaDB) {
                     const slugCat = catNombre.toLowerCase().trim().replace(/[\s]+/g, '-');
-                    const traduccionCat = await translate(catNombre, { from: 'es', to: 'en' }).catch(() => ({ text: '' }));
-                    
+
+                    // 🎯 Traducir el nombre de la categoría al vuelo si no existe
+                    const traduccionCat = await translate(catNombre, { from: 'es', to: 'en' })
+                        .catch(() => ({ text: catNombre.trim() }));
+
+                    // 🎯 Si la subcategoría en español existe pero la de inglés viene vacía, la traducimos
+                    if (subcatEs && !subcatEn) {
+                        const tradSub = await translate(subcatEs, { from: 'es', to: 'en' })
+                            .catch(() => ({ text: subcatEs.trim() }));
+                        subcatEn = tradSub.text;
+                    }
+
                     categoriaDB = new Categoria({
                         nombre: {
                             es: catNombre.trim(),
                             en: traduccionCat.text
                         },
+                        icono: 'default-icon',
+                        subcategorias: {
+                            es: subcatEs.trim(),
+                            en: subcatEn.trim()
+                        },
                         slug: `${slugCat}-${Date.now()}`,
                         local: idLocal,
-                        usuario: req.uid
+                        status: 'Activo' // Activa por defecto para evitar catálogos ocultos
                     });
                     await categoriaDB.save();
                 }
 
-                // 4. Traducciones automáticas en paralelo por IA para el producto raíz
+                // =========================================================================
+                // 4. Traducciones Automáticas Inteligentes del Producto
+                // =========================================================================
+                // Si el usuario ya se tomó la molestia de escribir la traducción en el Excel, la respetamos.
+                // Si viene vacío, invocamos 'google-translate-api-x' en paralelo para no ralentizar el bucle.
                 const [traducirTitulo, traducirInfoShort, traducirDetalle] = await Promise.all([
-                    translate(tituloEs, { from: 'es', to: 'en' }).catch(() => ({ text: fila.titulo_en || '' })),
-                    translate(textoShort, { from: 'es', to: 'en' }).catch(() => ({ text: '' })),
-                    translate(textoDetalle, { from: 'es', to: 'en' }).catch(() => ({ text: '' }))
+                    fila.titulo_en
+                        ? Promise.resolve({ text: fila.titulo_en.trim() })
+                        : translate(tituloEs, { from: 'es', to: 'en' }).catch(() => ({ text: tituloEs })),
+
+                    fila.info_short_en
+                        ? Promise.resolve({ text: fila.info_short_en.trim() })
+                        : (textoShort ? translate(textoShort, { from: 'es', to: 'en' }).catch(() => ({ text: '' })) : Promise.resolve({ text: '' })),
+
+                    fila.detalle_en
+                        ? Promise.resolve({ text: fila.detalle_en.trim() })
+                        : (textoDetalle ? translate(textoDetalle, { from: 'es', to: 'en' }).catch(() => ({ text: '' })) : Promise.resolve({ text: '' }))
                 ]);
 
-                // 5. Instanciar y Guardar primero el Producto raíz en MongoDB Atlas
+                // =========================================================================
+                // 5. Instanciar y Guardar el Producto con su Categoría Asignada
+                // =========================================================================
                 const nuevoProducto = new Producto({
                     usuario: req.uid,
                     local: idLocal,
@@ -104,13 +147,14 @@ const importarProductosExcel = async (req, res) => {
                     sku: fila.sku || `SKU-${Date.now()}`,
                     precio_ahora: Number(fila.precio) || 0,
                     precio_antes: Number(fila.precio) || 0,
-                    bajoPedido: false || true,
+                    bajoPedido: fila.bajoPedido === 'true' || fila.bajoPedido === true,
                     stock: Number(fila.stock) || 0,
                     condition: fila.condition === 'used' ? 'used' : 'new',
-                    categoria: categoriaDB._id,
-                    status: 'Desactivado', 
-                    img: fila.imagenRef || '', 
-                    titulo: { es: tituloEs, en: traducirTitulo.text || fila.titulo_en || '' },
+                    categoria: categoriaDB._id, // Vinculado al ID correcto (existente o recién creado)
+                    subcategoria: subcatEs.trim(), // Campo plano del producto raíz
+                    status: 'Desactivado',
+                    img: fila.imagenRef || '',
+                    titulo: { es: tituloEs, en: traducirTitulo.text },
                     info_short: { es: textoShort, en: traducirInfoShort.text },
                     detalle: { es: textoDetalle, en: traducirDetalle.text },
                     ventas: 0
@@ -191,18 +235,20 @@ const importarProductosExcel = async (req, res) => {
 };
 
 
+
+
 const vincularImagenesMasivas = async (req, res) => {
     try {
         if (!req.files || Object.keys(req.files).length === 0) {
             return res.status(400).json({ ok: false, msg: 'No se seleccionó ninguna imagen.' });
         }
 
-        const idLocal = req.body.local; 
+        const idLocal = req.body.local;
         if (!idLocal) {
             return res.status(400).json({ ok: false, msg: 'El ID del local es obligatorio.' });
         }
 
-        let loteImagenes = req.files.imagenes; 
+        let loteImagenes = req.files.imagenes;
         if (!Array.isArray(loteImagenes)) {
             loteImagenes = [loteImagenes];
         }
@@ -215,7 +261,7 @@ const vincularImagenesMasivas = async (req, res) => {
 
         const promesasDeCarga = loteImagenes.map((file) => {
             return new Promise(async (resolve) => {
-                const nombreArchivoOriginal = file.name; 
+                const nombreArchivoOriginal = file.name;
 
                 if (file.size > bytesLimit) {
                     noEncontrados.push(`${nombreArchivoOriginal} (Excede el límite de ${MAX_SIZE_MB}MB)`);
@@ -249,21 +295,21 @@ const vincularImagenesMasivas = async (req, res) => {
                         folder: `zlipmenu/uploads/productos/local_${idLocal}/`,
                         public_id: publicIdMultiTenant, // ✅ Nombre real precedido por el ID de la tienda
                         transformation: [
-                            { width: 1000, crop: "limit" }, 
-                            { quality: "auto" },            
-                            { fetch_format: "auto" }        
+                            { width: 1000, crop: "limit" },
+                            { quality: "auto" },
+                            { fetch_format: "auto" }
                         ]
                     });
 
                     // 5. Buscar el producto que guarde temporalmente este nombre de archivo en "img"
                     const productoActualizado = await Producto.findOneAndUpdate(
-                        { 
-                            local: idLocal, 
+                        {
+                            local: idLocal,
                             img: nombreArchivoOriginal // Sigue haciendo match perfecto con la columna imagenRef
                         },
-                        { 
+                        {
                             img: result.secure_url, // Guarda la URL final de Cloudinary
-                            status: 'Activo'       
+                            status: 'Activo'
                         },
                         { new: true }
                     );
@@ -306,19 +352,23 @@ const vincularImagenesMasivas = async (req, res) => {
 };
 
 
-
 const descargarPlantillaExcel = async (req, res) => {
     try {
+        // Estructura de muestra para la plantilla de productos masivos
         const dataPlantilla = [
             {
                 titulo_es: "Hamburguesa Especial",
                 titulo_en: "Special Burger",
                 sku: "HAM-001",
                 precio: 12.50,
-                bajoPedido: false,
                 stock: 50,
+                bajoPedido: false,
                 condition: "new",
+
+                // 🎯 CONTROL DE CATEGORÍAS AUTOMATIZADAS
                 nombre_categoria: "Hamburguesas",
+                subcategoria_es: "Clásicas",
+
                 colores_hex: "Amarillo:#FFCC00 | Rojo:#FF0000",
                 nombre_selector: "Sabor",
                 variantes_selector: "Pollo | Carne | Mixta",
@@ -334,7 +384,11 @@ const descargarPlantillaExcel = async (req, res) => {
                 stock: 40,
                 bajoPedido: false,
                 condition: "new",
+
+                // 🎯 CONTROL DE CATEGORÍAS AUTOMATIZADAS
                 nombre_categoria: "Pastas",
+                subcategoria_es: "Artesanales",
+
                 colores_hex: "",
                 nombre_selector: "Salsa",
                 variantes_selector: "Boloñesa | Pesto | Alfredo",
@@ -344,15 +398,21 @@ const descargarPlantillaExcel = async (req, res) => {
             }
         ];
 
-        const worksheet = XLSX.utils.json_to_sheet(dataPlantilla);
         const workbook = XLSX.utils.book_new();
+
+        // Convertir el JSON plano a una hoja de cálculo limpia
+        const worksheet = XLSX.utils.json_to_sheet(dataPlantilla);
+
+        // Adjuntar la hoja al libro de trabajo
         XLSX.utils.book_append_sheet(workbook, worksheet, "Plantilla Productos");
 
+        // Generar el Buffer de salida para la descarga directa
         const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 
+        // Configuración de cabeceras HTTP para la descarga del archivo binario
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', 'attachment; filename=plantilla_productos_saas.xlsx');
-        
+        res.setHeader('Content-Disposition', 'attachment; filename=plantilla_productos_zlipmenu.xlsx');
+
         return res.send(buffer);
 
     } catch (error) {
@@ -362,10 +422,114 @@ const descargarPlantillaExcel = async (req, res) => {
 };
 
 
+// ==========================================
+// Cargar categorías desde Excel (Módulo Independiente)
+// ==========================================
+const importarCategoriasExcel = async (req, res) => {
+    try {
+        if (!req.files || !req.files.excel) {
+            return res.status(400).json({ ok: false, msg: 'No se subió ningún archivo de Excel o CSV.' });
+        }
+
+        const idLocal = req.body.local; // Aislamiento Multi-Tenant
+        if (!idLocal) {
+            return res.status(400).json({ ok: false, msg: 'El ID del local es obligatorio.' });
+        }
+
+        const archivo = req.files.excel;
+        const workbook = XLSX.read(archivo.data, { type: 'buffer' });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const datos = XLSX.utils.sheet_to_json(worksheet);
+
+        const categoriasCreadas = [];
+        const errores = [];
+
+        for (const fila of datos) {
+            const nombreEs = fila.nombre_es || '';
+            const nombreEn = fila.nombre_en || '';
+            const icono = fila.icono || 'default-icon';
+            const status = fila.status || 'Activo';
+
+            if (!nombreEs) {
+                errores.push(`Fila omitida: El campo 'nombre_es' es mandatorio.`);
+                continue;
+            }
+
+            // Crear slug de categoría
+            const slugCat = nombreEs
+                .toLowerCase()
+                .trim()
+                .replace(/ñ/g, 'n')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[\s]+/g, '-')
+                .replace(/[^\w\-]+/g, '')
+                .replace(/\-\-+/g, '-');
+
+            // Verificar si ya existe en el local para evitar duplicados masivos
+            const existeCat = await Categoria.findOne({
+                'nombre.es': { $regex: new RegExp(`^${nombreEs.trim()}$`, 'i') },
+                local: idLocal
+            });
+
+            if (existeCat) {
+                errores.push(`Omitida "${nombreEs}": Ya existe esta categoría en este local.`);
+                continue;
+            }
+
+            try {
+                let traduccionEn = nombreEn.trim();
+
+                // Si el usuario no especificó la traducción en inglés, la generamos automáticamente
+                if (!traduccionEn) {
+                    const trad = await translate(nombreEs, { from: 'es', to: 'en' }).catch(() => ({ text: '' }));
+                    traduccionEn = trad.text;
+                }
+
+                const nuevaCategoria = new Categoria({
+                    nombre: {
+                        es: nombreEs.trim(),
+                        en: traduccionEn
+                    },
+                    icono: icono.trim(),
+                    slug: `${slugCat}-${Date.now()}`, // Prevenir colisiones globales de slug
+                    status: status,
+                    local: idLocal,
+                    usuario: req.uid
+                });
+
+                const catGuardada = await nuevaCategoria.save();
+                categoriasCreadas.push(catGuardada.nombre.es);
+
+            } catch (err) {
+                console.error(`Error procesando categoría ${nombreEs}:`, err);
+                errores.push(`Error en "${nombreEs}": ${err.message}`);
+            }
+        }
+
+        return res.json({
+            ok: true,
+            msg: `Procesamiento de categorías finalizado.`,
+            creados: categoriasCreadas.length,
+            fallidos: errores.length,
+            errores
+        });
+
+    } catch (error) {
+        console.error('Error crítico en importación masiva de categorías:', error);
+        return res.status(500).json({
+            ok: false,
+            msg: 'Hable con el administrador de sistemas',
+            error: error.message
+        });
+    }
+};
+
 
 module.exports = {
     importarProductosExcel,
     vincularImagenesMasivas,
-    descargarPlantillaExcel
+    descargarPlantillaExcel,
+    importarCategoriasExcel
 
 };

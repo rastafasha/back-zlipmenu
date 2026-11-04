@@ -49,7 +49,7 @@ const {
 const {
      importarProductosExcel,
     vincularImagenesMasivas,
-    descargarPlantillaExcel
+    descargarPlantillaExcel,
 } = require('../controllers/productoMasivoController');
 
 const { validarJWT } = require('../middlewares/validar-jwt');
@@ -78,6 +78,7 @@ router.post('/importar-imagenes', [
     validarJWT,
     validarCampos
 ], vincularImagenesMasivas);
+
 
 // mercadolibre
 
