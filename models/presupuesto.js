@@ -16,6 +16,7 @@ var PresupuestoSchema = Schema({
     title: { type: String, required: true },
     description: { type: String, required: true },
     observaciones: { type: String, required: false },
+    address: { type: String, required: false },
     
     // 📝 El desglose idéntico de platos de tu carrito tradicional
     pedidoList: { type: Array, required: true },

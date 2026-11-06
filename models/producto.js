@@ -40,7 +40,7 @@ var ProductoSchema = Schema({
     ventas: { type: Number },
     isFeatured: { type: Boolean, required: false },
     status: { type: String, required: false, default: 'Desactivado' },
-    bajoPedido: { type: Boolean, required: false },
+    bajoPedido: { type: Boolean, required: false, default: false },
     condition: {
         type: String,
         enum: ['new', 'used'],

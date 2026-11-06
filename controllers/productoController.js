@@ -1529,6 +1529,41 @@ function ecoomerce(req, res) {
 
 }
 
+const bypedido = async (req, res) => {
+    // 1. Extraemos el ID del local desde los parámetros
+    const { localId } = req.params; 
+
+    try {
+        // 2. Buscamos: Que pertenezca al local Y que 'bajopedido' sea true
+        const products = await Producto.find({ 
+            local: localId, 
+            bajoPedido: true 
+        }).lean(); // .lean() mejora el rendimiento devolviendo objetos JS puros
+
+        // 3. Si no hay productos o el arreglo está vacío
+        if (!products || products.length === 0) {
+            return res.status(404).json({ 
+                ok: false,
+                message: 'No se encontró ningún producto bajo pedido en este local.' 
+            });
+        }
+
+        // 4. Respuesta exitosa
+        return res.status(200).json({ 
+            ok: true,
+            products 
+        });
+
+    } catch (err) {
+        console.error('-> Error en bypedido:', err);
+        return res.status(500).json({ 
+            ok: false,
+            message: 'Ocurrió un error en el servidor al buscar los productos.' 
+        });
+    }
+};
+
+
 
 module.exports = {
     getProductos,
@@ -1567,5 +1602,6 @@ module.exports = {
     getProductosTiendaId,
     getProductosTiendaIdActive,
     reducir_stock_internal,
+    bypedido
 
 };

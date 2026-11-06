@@ -69,6 +69,7 @@ var TiendaSchema = Schema({
     isFeatured: { type: Boolean, required: false },
     mostrarTasas: { type: Boolean, required: false },
     usaDelivery: { type: Boolean, required: false },
+    usaPedido: { type: Boolean, required: false },
     usaMercadoLibre: { type: Boolean, required: true, default: false },
     
     // 💳 Campos listos para el esquema de suscripción:

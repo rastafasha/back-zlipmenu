@@ -45,10 +45,72 @@ const getPresupuesto = async (req, res) => {
 
 };
 const crearCotizacionCatering = async (req, res) => {
-    // 1. ID del Administrador del restaurante que genera o aprueba la propuesta
-    const uid = req.uid; 
+    
+    //  Usamos 'let' en lugar de 'const' para poder reasignarlo
+    let uid = req.uid; 
 
-    const cotizacion = new CotizacionCatering({
+   // =========================================================================
+    // 🚀 NUEVA LÓGICA: INTERCEPCIÓN / CREACIÓN DE USUARIO EXPRESS
+    // =========================================================================
+    if (!uid) {
+        // 🟢 CORRECCIÓN 2: Extraemos los datos necesarios directamente de req.body
+        const { first_name, last_name, telefono } = req.body;
+
+        // Validamos que al menos vengan los datos mínimos antes de intentar crear el usuario
+        if (!first_name || !last_name || !telefono) {
+            return res.status(400).json({
+                ok: false,
+                mensaje: 'Faltan datos del cliente (first_name, last_name, telefono) para el registro express'
+            });
+        }
+
+        const mockReqUsuario = {
+            body: {
+                first_name,
+                last_name,
+                telefono,
+                role: 'CLIENTE_ROLE' 
+            }
+        };
+
+        const mockResUsuario = {
+            statusCode: 200,
+            status: function (code) {
+                this.statusCode = code;
+                return this;
+            },
+            json: function (data) {
+                this.responseData = data;
+                return this;
+            }
+        };
+
+        try {
+            await UsuarioController.crearClienteExpress(mockReqUsuario, mockResUsuario);
+
+            if (mockResUsuario.responseData && mockResUsuario.responseData.ok) {
+                // 🟢 Ahora sí se puede reasignar porque 'uid' es un 'let'
+                uid = mockResUsuario.responseData.usuario._id;
+            } else {
+                return res.status(mockResUsuario.statusCode).json({
+                    ok: false,
+                    mensaje: 'No se pudo procesar el registro del cliente express',
+                    errors: mockResUsuario.responseData?.errors
+                });
+            }
+        } catch (errUsuario) {
+            console.error('Error crítico al ejecutar crearUsuarioExpress:', errUsuario);
+            return res.status(500).json({
+                ok: false,
+                mensaje: 'Error interno al intentar dar de alta al cliente',
+                errors: errUsuario
+            });
+        }
+    }
+    // =========================================================================
+
+
+    const cotizacion = new Presupuesto({
         tienda: req.body.tienda, // Amarrado al local
         usuario: uid,            // Profesional que lo atiende
         ...req.body,
@@ -116,7 +178,7 @@ const actualizarCotizacionCatering = async (req, res) => {
     const uid = req.uid; // ID del Administrador que está haciendo la modificación
 
     try {
-        const cotizacion = await CotizacionCatering.findById(id);
+        const cotizacion = await Presupuesto.findById(id);
         if (!cotizacion) {
             return res.status(404).json({
                 ok: false,
@@ -129,7 +191,7 @@ const actualizarCotizacionCatering = async (req, res) => {
             usuario: uid // Registramos al administrador que hizo los cambios en el presupuesto
         }
 
-        const cotizacionActualizada = await CotizacionCatering.findByIdAndUpdate(id, cambiosCotizacion, { new: true });
+        const cotizacionActualizada = await Presupuesto.findByIdAndUpdate(id, cambiosCotizacion, { new: true });
 
         // ========================================================
         // 🔔 NOTIFICAR AL CLIENTE SOBRE LA ACTUALIZACIÓN EN VIVO
@@ -285,7 +347,7 @@ const updateStatusCotizacionCatering = async (req, res) => {
 
         // 4. Actualizar la cotización en la Base de Datos de Zlipmenu
         // Hacemos populate del usuario administrativo del local que atiende el banquete
-        const cotizacion_data = await CotizacionCatering.findByIdAndUpdate(
+        const cotizacion_data = await Presupuesto.findByIdAndUpdate(
             id,
             camposAActualizar,      
             { new: true }           
@@ -357,15 +419,21 @@ const updateStatusCotizacionCatering = async (req, res) => {
 }
 
 const listarPresupuestoByLocal = async (req, res) => {
-    const { localId } = req.params;
+    // ⚠️ Si tu ruta dice :tiendaId, cambia "localId" por "tiendaId" aquí
+    const { localId } = req.params; 
 
     try {
-        // 🟢 1. Forzamos la conversión nativa a ObjectId
+        // Log de control para ver qué llega en la URL
+        console.log('-> Buscando presupuestos para el localId:', localId);
+
         const localObjectId = new mongoose.Types.ObjectId(localId);
 
-        // 🟢 2. Buscamos de forma directa SIN usar .populate() para evitar que se cuelgue Express
         const presupuestos = await Presupuesto.find({ tienda: localObjectId })
-            .sort({ createdAt: -1 }).lean(); // lean() devuelve objetos JS simples, no documentos Mongoose
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // Log de control para ver cuántos registros encontró
+        console.log(`-> Presupuestos encontrados: ${presupuestos.length}`);
 
         return res.json({
             ok: true,
@@ -380,7 +448,6 @@ const listarPresupuestoByLocal = async (req, res) => {
         });
     }
 };
-
 
 
 module.exports = {

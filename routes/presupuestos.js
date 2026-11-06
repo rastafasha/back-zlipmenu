@@ -21,7 +21,7 @@ const { validarCampos } = require('../middlewares/validar-campos');
 
 router.get('/:id', getPresupuesto);
 router.get('/user/:id', listarPresupuestoPorUsuario);
-router.get('/by_tiendaId/:id', listarPresupuestoByLocal);
+router.get('/by_tiendaId/:localId', listarPresupuestoByLocal);
 router.get('/', getPresupuestos);
 
 

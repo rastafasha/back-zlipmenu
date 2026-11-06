@@ -72,8 +72,6 @@ const loginExpress = async (req, res) => {
     }
 }
 
-
-
 const googleSignIn = async (req, res = response) => {
 
     const googleToken = req.body.token;

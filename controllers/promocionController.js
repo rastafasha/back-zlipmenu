@@ -185,6 +185,9 @@ function activar(req, res) {
     })
 }
 
+
+
+
 module.exports = {
     getPromocions,
     crearPromocion,

@@ -135,6 +135,7 @@ const startServer = async () => {
 
     app.use('/api/reservacion', require('./routes/reservacion'));
     app.use('/api/presupuestos', require('./routes/presupuestos'));
+    app.use('/api/solicitudes', require('./routes/solicitud'));
 
     //pagos
     app.use('/api/tipopago', require('./routes/tipopago'));
@@ -149,6 +150,7 @@ const startServer = async () => {
     //delivery
     app.use('/api/driver', require('./routes/driver'));
     app.use('/api/asignardelivery', require('./routes/asignardelivery'));
+
     app.use('/api/pedidomenu', require('./routes/pedidomenu'));
 
     //notificacioens

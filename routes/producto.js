@@ -39,6 +39,7 @@ const {
     listar_productosCategNombre,
     getProductosTiendaId,
     getProductosTiendaIdActive,
+    bypedido
 
 } = require('../controllers/productoController');
 
@@ -95,6 +96,7 @@ router.post(
 router.get('/', getProductos);
 router.get('/activos', getProductosActivos);
 router.get('/destacados', destacado);
+router.get('/bypedido/:localId', bypedido);
 
 router.post('/store', [
     validarJWT,
