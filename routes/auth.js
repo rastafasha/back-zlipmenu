@@ -13,8 +13,10 @@ const {
 changeforgotPassword,
 resetPassword,
 changePassword,
+registrarLocalAprobado
  } = require('../controllers/auth');
 const { validarJWT } = require('../middlewares/validar-jwt');
+const { validarInterno } = require('../middlewares/validarInterno');
 
 
 const router = Router();
@@ -29,6 +31,13 @@ router.post('/express', [
     check('telefono', 'El teléfono es obligatorio').not().isEmpty(),
     validarCampos
 ], loginExpress);
+
+
+router.post(
+  '/register-approved-local', 
+  validarInterno, // <--- Seguridad estricta activada
+  registrarLocalAprobado
+);
 
 router.post('/google', [
     check('token', 'el token es obligatorio').not().isEmpty(),

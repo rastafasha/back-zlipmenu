@@ -6,7 +6,8 @@ const { googleVerify } = require('../helpers/google-verify');
 const { getMenuFrontEnd } = require('../helpers/menu-frontend');
 const nodemailer = require('nodemailer');
 const smtpTransport = require('nodemailer-smtp-transport');
-
+const { crearUsuarios } = require('./usuarios');
+const { crearTienda } = require('./tiendaController');
 
 const login = async (req, res) => {
 
@@ -351,6 +352,189 @@ const changePassword = async (req, res) => {
     }
 };
 
+const registrarLocalAprobado = async (req, res) => {
+  // Guardamos las referencias originales de Express para proteger el flujo global
+  const resOriginalJson = res.json;
+  const resOriginalStatus = res.status;
+  
+  let usuarioCreadoId = null; // Almacén dinámico para rastrear si debemos hacer rollback
+
+  try {
+    const { nombreDueno, email, telefono, nombreLocal, slugDeseado } = req.body;
+
+    // Generamos una contraseña temporal aleatoria segura para el nuevo administrador
+    const contrasenaTemporal = crypto.randomBytes(6).toString('hex'); // Ej: 'e4f1a9b2'
+
+    // ==========================================
+    // PASO 1: CREAR EL USUARIO ADMINISTRADOR
+    // ==========================================
+    const resultadoUsuario = await new Promise((resolve, reject) => {
+      req.body = {
+        email: email,
+        password: contrasenaTemporal,
+        first_name: nombreDueno,
+        last_name: '(Admin)',
+        telefono: telefono,
+        role: 'ADMIN_ROLE',
+        numdoc: 'N/A'
+      };
+
+      // Interceptamos la respuesta JSON del controlador de usuarios
+      res.json = function(datosUsuario) {
+        resolve(datosUsuario);
+      };
+
+      // Interceptamos respuestas de error HTTP (ej: 400 por correo ya existente)
+      res.status = function(codigo) {
+        if (codigo >= 400) {
+          reject(new Error(`Fallo en controlador de usuarios con código ${codigo}`));
+        }
+        return res;
+      };
+
+      crearUsuarios(req, res).catch(reject);
+    });
+
+    // Restauramos las utilidades de respuesta de Express para el siguiente paso
+    res.json = resOriginalJson;
+    res.status = resOriginalStatus;
+
+    if (!resultadoUsuario || !resultadoUsuario.ok || !resultadoUsuario.usuario) {
+      return res.status(400).json({
+        ok: false,
+        msg: 'El usuario administrador no pudo ser registrado.',
+        detalle: resultadoUsuario?.msg || 'Error desconocido.'
+      });
+    }
+
+    // Guardamos el ID del usuario en memoria para habilitar el escudo de Rollback
+    usuarioCreadoId = resultadoUsuario.usuario._id || resultadoUsuario.usuario.id;
+
+    // ==========================================
+    // PASO 2: CREAR LA TIENDA VINCULADA
+    // ==========================================
+    const resultadoTienda = await new Promise((resolve, reject) => {
+      req.uid = usuarioCreadoId; 
+      req.body = {
+        nombre: nombreLocal,
+        telefono: telefono,
+        usuario: usuarioCreadoId, // Capturado por duenoFinal de tu lógica
+        // Bloques base requeridos por tu TiendaSchema para inicializar el Hero i18n
+        texto_hero_uno: { es: `Bienvenidos a ${nombreLocal}`, en: '' },
+        texto_hero_dos: { es: 'Catálogo Digital', en: '' },
+        texto_hero_destacado: { es: 'Menú Completo', en: '' },
+        descripcion_hero: { es: 'Explora nuestros platos y haz tu pedido en línea.', en: '' }
+      };
+
+      res.json = function(datosTienda) {
+        resolve(datosTienda);
+      };
+
+      res.status = function(codigo) {
+        if (codigo >= 400) {
+          reject(new Error(`Fallo en controlador de tiendas con código ${codigo}`));
+        }
+        return res;
+      };
+
+      crearTienda(req, res).catch(reject);
+    });
+
+    // Restauramos definitivamente las utilidades de respuesta nativas de Express
+    res.json = resOriginalJson;
+    res.status = resOriginalStatus;
+
+    if (!resultadoTienda || !resultadoTienda.ok) {
+      throw new Error('La tienda no pudo ser creada en la base de datos.');
+    }
+
+    // ==========================================
+    // PASO 3: NOTIFICACIÓN EMAIL AL CLIENTE
+    // ==========================================
+    try {
+      const transporter = nodemailer.createTransport(smtpTransport({
+        host: "zlipmenu.com",
+        port: 465,
+        secure: true,
+        auth: {
+          user: process.env.USER_EMAIL, // soporte@zlipmenu.com
+          pass: process.env.PASS_email  
+        },
+        tls: {
+          rejectUnauthorized: false
+        }
+      }));
+
+      const mailOptions = {
+        from: `"Soporte ZlipMenu" <${process.env.USER_EMAIL}>`, 
+        to: email, // Despachado directamente al correo del dueño del local
+        subject: `¡Tu catálogo digital ${nombreLocal} está listo! 🎉`,
+        html: `
+          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <h2>¡Hola, ${nombreDueno}!</h2>
+            <p>Nos complace informarte que tu solicitud ha sido aprobada con éxito. Tu portal administrativo en <strong>Zlipmenu</strong> ya se encuentra totalmente activo.</p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+            <h3>Credenciales de acceso provisionales:</h3>
+            <p><strong>Enlace del Panel:</strong> <a href="https://zlipmenu.com" target="_blank">://zlipmenu.com</a></p>
+            <p><strong>Usuario (Email):</strong> ${email}</p>
+            <p><strong>Contraseña Temporal:</strong> <span style="background-color: #f4f4f4; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 1.1em;">${contrasenaTemporal}</span></p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+            <p style="font-size: 0.9em; color: #666;">*Por motivos de seguridad, te sugerimos modificar esta contraseña de manera inmediata tras realizar tu primer inicio de sesión.</p>
+            <br />
+            <p>Atentamente,<br /><strong>El equipo de Zlipmenu</strong></p>
+          </div>
+        `
+      };
+
+      // Disparamos el email en segundo plano de manera asíncrona sin retrasar la respuesta al CRM
+      transporter.sendMail(mailOptions).catch(errMail => {
+        console.error('⚠️ Error asíncrono al enviar correo al cliente:', errMail.message);
+      });
+
+    } catch (emailSetupError) {
+      console.error('⚠️ Error al configurar o disparar el transporte de email:', emailSetupError.message);
+    }
+
+    // ==========================================
+    // PASO 4: RESPUESTA EXITOSA CONSOLIDADA
+    // ==========================================
+    return res.status(201).json({
+      ok: true,
+      msg: 'Estructura comercial configurada por completo e email enviado.',
+      tienda: resultadoTienda.tienda,
+      usuario: resultadoUsuario.usuario,
+      credenciales: {
+        usuario: email,
+        claveTemporal: contrasenaTemporal
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ ALERTA: Error en el pipeline de automatización:', error.message);
+
+    // 🛡️ MECANISMO DE ROLLBACK: Si el usuario llegó a crearse pero la tienda falló, lo eliminamos
+    if (usuarioCreadoId) {
+      console.log(`🛡️ Ejecutando Rollback: Eliminando usuario huérfano ID [${usuarioCreadoId}] de la base de datos...`);
+      try {
+        await Usuario.findByIdAndDelete(usuarioCreadoId);
+        console.log('✅ Rollback completado con éxito. Base de datos purgada.');
+      } catch (dbError) {
+        console.error('🚨 Fallo crítico: No se pudo eliminar el usuario huérfano durante el rollback:', dbError.message);
+      }
+    }
+
+    // Aseguramos restaurar los métodos nativos de Express ante el crash
+    res.json = resOriginalJson;
+    res.status = resOriginalStatus;
+
+    return res.status(500).json({
+      ok: false,
+      msg: 'Fallo crítico sistémico al procesar la aprobación interna.',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
     login,
     loginExpress,
@@ -360,4 +544,5 @@ module.exports = {
     changeforgotPassword,
     resetPassword,
     changePassword,
+    registrarLocalAprobado
 };
