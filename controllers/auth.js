@@ -9,7 +9,7 @@ const smtpTransport = require('nodemailer-smtp-transport');
 const { crearUsuarios } = require('./usuarios');
 const { crearTienda } = require('./tiendaController');
 const { randomBytes } = require('node:crypto');
-const { enviarMensajeWhatsApp } = require('../helpers/whatsapp');
+const { enviarMensajeWhatsApp } = require('../helpers/whatsapp-helper');
 
 const login = async (req, res) => {
 
