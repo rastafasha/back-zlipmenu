@@ -2,7 +2,7 @@
 const { Router } = require('express');
 const router = Router();
 
-const { mercadoLibreCallback } = require('../controllers/mercadolibreController.js');
+const { mercadoLibreCallback, obtenerUrlVinculacionML } = require('../controllers/mercadolibreController.js');
 const { recibirWebhookMercadoLibre } = require('../controllers/mercadolibre_webhook.js');
 const { guardarOActualizarConfigML, obtenerConfigML } = require('../controllers/mercadolibre_config.js');
 const { validarJWT } = require('../middlewares/validar-jwt');
@@ -11,6 +11,7 @@ const { validarJWT } = require('../middlewares/validar-jwt');
 
 // Definimos la ruta POST para subir la imagen de producto
 router.get('/callback', mercadoLibreCallback);
+router.get('/url-vinculacion/:tiendaId', obtenerUrlVinculacionML);
 
 // Ruta pública de escucha para los servidores de Mercado Libre
 router.post('/webhook', recibirWebhookMercadoLibre);

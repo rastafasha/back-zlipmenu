@@ -5,6 +5,7 @@ const { dbConnection } = require('./database/config');
 const cors = require('cors');
 const path = require('path');
 const socketIO = require('socket.io');
+const fileUpload = require('express-fileupload');
 
 require('./config/recordatorios-cron');
 const inicializarCronWhatsApp = require('./services/whatsapp-sync.service'); // Import the WhatsApp sync service to initialize it
@@ -84,6 +85,12 @@ module.exports.io = io;
 
 //lectura y parseo del body
 app.use(express.json());
+
+// 🚀  Habilita el mapeo de archivos binarios hacia req.files
+app.use(fileUpload({
+    useTempFiles: true,
+    tempFileDir: '/tmp/'
+}));
 
 
 // 🚨 VARIABLE GLOBAL donde guardas tus instancias de whatsapp-web.js por restauranteId

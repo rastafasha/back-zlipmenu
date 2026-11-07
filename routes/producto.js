@@ -75,7 +75,7 @@ router.post('/importar-excel', [
 ], importarProductosExcel);
 
 // 📸 3. Subida masiva de imágenes (Cruce con Cloudinary y activación automática)
-router.post('/importar-imagenes', [
+router.post('/vincular-imagen', [
     validarJWT,
     validarCampos
 ], vincularImagenesMasivas);

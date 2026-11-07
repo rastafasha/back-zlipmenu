@@ -272,24 +272,93 @@ function find_by_slug(req, res) {
         });
 }
 
-function find_by_userid(req, res) {
-    const userid = req.params.userid;
+async function find_by_userid(req, res) {
+    try {
+        const userid = req.params.userid;
 
-    Tienda.find({ user: userid })
-        .populate('user')
-        .populate('categoria')
-        .exec((err, tienda_data) => {
-            if (err) {
-                res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
-            } else {
-                if (tienda_data) {
-                    res.status(200).send({ tiendas: tienda_data });
-                } else {
-                    res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
+        // 1. Buscamos las tiendas omitiendo el .populate('pais') nativo para que jamás falle el casteo
+        const tiendas = await Tienda.find({ user: userid })
+            .populate('user')
+            .populate('categoria')
+            .lean(); 
+
+        if (!tiendas || tiendas.length === 0) {
+            return res.status(200).send({ tiendas: [] });
+        }
+
+        // Requerimos los modelos necessários de forma dinámica y segura
+        const mongoose = require('mongoose');
+        let MercadoLibreConfig;
+        try {
+            MercadoLibreConfig = require('../models/MercadoLibreConfig');
+        } catch (e) {
+            MercadoLibreConfig = require('../models/MercadoLibreConfig');
+        }
+        
+        // Requerimos el modelo de Pais para la resolución manual alternativa
+        let PaisModel;
+        try {
+            PaisModel = require('../models/pais');
+        } catch (e) {
+            PaisModel = require('../models/pais');
+        }
+
+        // 2. Recorremos las tiendas unificando configuraciones en paralelo
+        const tiendasConMeli = await Promise.all(tiendas.map(async (tienda) => {
+            
+            // 🌍 BLINDAJE DE PAÍS MANUAL INTERNO:
+            // Verificamos si el valor guardado es un ObjectId válido de Mongoose de 24 caracteres hexadecimales
+            if (tienda.pais && mongoose.Types.ObjectId.isValid(tienda.pais.toString())) {
+                try {
+                    const paisDoc = await PaisModel.findById(tienda.pais).lean();
+                    if (paisDoc) {
+                        tienda.pais = paisDoc; // Inyectamos el objeto completo del país homologado
+                    } else {
+                        tienda.pais = { code: 'VE', pais: 'Venezuela' }; // Respaldo si no existía el registro
+                    }
+                } catch (err) {
+                    tienda.pais = { code: 'VE', pais: 'Venezuela' };
                 }
+            } else {
+                // 🚀 SALVAVIDAS INMEDIATO: Si era un string plano ("Venezuela") o venía corrupto, lo normalizamos
+                const nombrePaisOriginal = tienda.pais ? tienda.pais.toString() : 'Venezuela';
+                tienda.pais = { 
+                    code: 'VE', 
+                    pais: nombrePaisOriginal 
+                };
             }
-        });
+
+            // 🔑 RESOLUCIÓN DE CONFIGURACIÓN DE MERCADO LIBRE:
+            const configML = await MercadoLibreConfig.findOne({ tienda: tienda._id });
+            
+            if (configML) {
+                tienda.usaMercadoLibre = true;
+                tienda.meli_client_id = configML.client_id || '';
+                tienda.meli_client_secret = configML.client_secret || '';
+                tienda.meli_redirect_uri = configML.redirect_uri || '';
+                tienda.meliStatus = configML.status || 'CONFIGURADO';
+                tienda.meliNickname = configML.nickname || '';
+            } else {
+                tienda.usaMercadoLibre = false;
+                tienda.meli_client_id = '';
+                tienda.meli_client_secret = '';
+                tienda.meli_redirect_uri = '';
+                tienda.meliStatus = 'DESCONECTADO';
+                tienda.meliNickname = '';
+            }
+            
+            return tienda;
+        }));
+
+        // 3. Enviamos la respuesta con los datos estructurados limpios
+        return res.status(200).send({ tiendas: tiendasConMeli });
+
+    } catch (error) {
+        console.error('🔴 Error crítico en find_by_userid:', error);
+        return res.status(500).send({ message: 'Ocurrió un error en el servidor al obtener las tiendas.' });
+    }
 }
+
 
 const getTiendasActivos = async (req, res) => {
 
