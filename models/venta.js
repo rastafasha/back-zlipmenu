@@ -9,7 +9,7 @@ var VentaSchema = Schema({
     info_cupon: { type: String },
     idtransaccion: { type: String },
     metodo_pago: { type: String, ref: 'paymentmethod' },
-    pedido: { type: Schema.ObjectId, ref: 'pedidomenus'  },
+    pedido: { type: Schema.ObjectId, ref: 'pedidomenus' },
 
     tracking_number: { type: String },
     tipo_envio: { type: String, required: true },
@@ -28,6 +28,15 @@ var VentaSchema = Schema({
     year: { type: String },
 
     estado: { type: String, required: true },
+    //mercadolibre
+    origen: {
+        type: String,
+        enum: ['DIRECTA', 'MERCADOLIBRE'],
+        default: 'DIRECTA'
+    },
+    meli_order_id: { type: String, default: null },
+    meli_shipping_id: { type: String, default: null }, // Listo para cuando integres Mercado Envíos / Flex / Terceros
+    
     createdAt: { type: Date, default: Date.now, required: true },
 });
 

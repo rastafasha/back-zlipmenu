@@ -391,6 +391,7 @@ function init_data_admin(req, res) {
         }
     });
 }
+
 function init_data_admin_local(req, res) {
     var localid = req.params['localid'];
     Venta.find({ local: localid }).sort({ createdAt: -1 })

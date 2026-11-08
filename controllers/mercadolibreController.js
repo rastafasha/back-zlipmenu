@@ -3,6 +3,7 @@ const MercadoLibreConfig = require('../models/MercadoLibreConfig');
 const axios = require('axios');
 const { obtenerConfiguracionPorPais } = require('../helpers/meli-regions'); // Ajusta la ruta a tu archivo real
 const Usuario = require('../models/usuario');
+const MeliOrden = require('../models/meliorden');
 
 async function mercadoLibreCallback(req, res) {
     try {
@@ -135,9 +136,48 @@ async function obtenerUrlVinculacionML(req, res) {
     }
 }
 
+async function obtenerResumenVentasGrafico(req, res) {
+    try {
+        const { tiendaId } = req.params;
+        const mongoose = require('mongoose');
+        const MeliOrden = require('../models/meliorden');
+
+        // Filtramos las ventas de los últimos 30 días para la tienda activa
+        const fechaLimite = new Date();
+        fechaLimite.setDate(fechaLimite.getDate() - 30);
+
+        const reporte = await MeliOrden.aggregate([
+            { 
+                $match: { 
+                    tienda: new mongoose.Types.ObjectId(tiendaId),
+                    fecha: { $gte: fechaLimite }
+                } 
+            },
+            {
+                $group: {
+                    _id: { $dateToString: { format: "%Y-%m-%d", date: "$fecha" } }, // Agrupa por día
+                    totalVendido: { $sum: "$total_amount" }, // Suma las ganancias
+                    cantidadOrdenes: { $sum: 1 } // Cuenta las ventas
+                }
+            },
+            { $sort: { "_id": 1 } } // Ordena cronológicamente
+        ]);
+
+        return res.json({
+            ok: true,
+            reporte // <-- Esto es exactamente lo que espera tu @Input() estadisticas
+        });
+
+    } catch (error) {
+        console.error('🔴 Error al generar gráfico Meli:', error);
+        return res.status(500).json({ ok: false, msg: 'Error al compilar el reporte gráfico.' });
+    }
+}
+
 
 
 module.exports = {
     mercadoLibreCallback,
-    obtenerUrlVinculacionML
+    obtenerUrlVinculacionML,
+    obtenerResumenVentasGrafico
 };
