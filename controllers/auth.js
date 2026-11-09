@@ -377,7 +377,7 @@ const registrarLocalAprobado = async (req, res) => {
                 first_name: nombreDueno,
                 last_name: '(Admin)',
                 telefono: telefono,
-                role: 'ADMIN_ROLE',
+                role: 'ADMIN',
                 numdoc: 'N/A'
             };
 
@@ -420,7 +420,7 @@ const registrarLocalAprobado = async (req, res) => {
             req.body = {
                 nombre: nombreLocal,
                 telefono: telefono,
-                usuario: usuarioCreadoId, // Capturado por duenoFinal de tu lógica
+                user: usuarioCreadoId, // Capturado por duenoFinal de tu lógica
                 // Bloques base requeridos por tu TiendaSchema para inicializar el Hero i18n
                 texto_hero_uno: { es: `Bienvenidos a ${nombreLocal}`, en: '' },
                 texto_hero_dos: { es: 'Catálogo Digital', en: '' },
