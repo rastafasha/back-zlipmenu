@@ -41,11 +41,11 @@ const importarProductosExcel = async (req, res) => {
         }
 
         const workbook = XLSX.read(bufferData, { type: 'buffer' });
-        
+
         // 🔑 CORRECCIÓN CRÍTICA: Tomamos el nombre de la PRIMERA pestaña [0] de forma explícita
         const primeraPestanaNombre = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[primeraPestanaNombre];
-        
+
         // Convertimos las filas a JSON
         const datos = XLSX.utils.sheet_to_json(worksheet);
 
@@ -190,18 +190,34 @@ const importarProductosExcel = async (req, res) => {
                 }
 
                 // 🛠️ Procesamiento complementario de selectores
-                const selectorNombreEs = fila.nombre_selector || '';
-                const variantesRaw = fila.variantes_selector || '';
+                const selectorNombreEs = String(fila.nombre_selector || '').trim();
+                const variantesRaw = String(fila.variantes_selector || '').trim();
+
                 if (selectorNombreEs && variantesRaw) {
-                    const opcionesLimpias = variantesRaw.split('|').map(o => o.trim()).join(', ');
-                    const nuevoSelectorDoc = new Selector({
-                        titulo: { es: selectorNombreEs.trim(), en: selectorNombreEs.trim() },
-                        producto: productoGuardado._id,
-                        estado: opcionesLimpias
-                    });
-                    const selectorGuardado = await nuevoSelectorDoc.save();
-                    productoGuardado.selector = selectorGuardado._id;
-                    productoGuardado.nombre_selector = selectorNombreEs.trim();
+                    // 1. Separamos las variantes por '|' y limpiamos espacios o valores vacíos
+                    const listaVariantes = variantesRaw
+                        .split('|')
+                        .map(v => v.trim())
+                        .filter(v => v !== '');
+
+                    const selectoresIds = [];
+
+                    // 2. Creamos un documento Selector por cada variante (el backend/hook traduce 'en' automáticamente)
+                    for (const varianteEs of listaVariantes) {
+                        const nuevoSelectorDoc = new Selector({
+                            titulo: {
+                                es: varianteEs
+                            },
+                            producto: productoGuardado._id
+                        });
+
+                        const selectorGuardado = await nuevoSelectorDoc.save();
+                        selectoresIds.push(selectorGuardado._id);
+                    }
+
+                    // 3. Asignamos el nombre del grupo y los IDs creados al producto
+                    productoGuardado.nombre_selector = selectorNombreEs;
+                    productoGuardado.selector = selectoresIds;
                     await productoGuardado.save();
                 }
 
@@ -238,7 +254,7 @@ const vincularImagenesMasivas = async (req, res) => {
     try {
         // 🔍 DIAGNÓSTICO INICIAL EN CONSOLA
         console.log('🖼️ [WEBHOOK-IMÁGENES] Iniciando procesamiento de lote...');
-        
+
         if (!req.files || Object.keys(req.files).length === 0) {
             console.log('⚠️ No se detectaron archivos en req.files');
             return res.status(400).json({ ok: false, msg: 'No se seleccionó ninguna imagen.' });
@@ -246,7 +262,7 @@ const vincularImagenesMasivas = async (req, res) => {
 
         const idLocal = req.body.local;
         console.log('🆔 ID del local recibido en el body:', idLocal);
-        
+
         if (!idLocal) {
             return res.status(400).json({ ok: false, msg: 'El ID del local es obligatorio para vincular las imágenes.' });
         }
@@ -284,7 +300,7 @@ const vincularImagenesMasivas = async (req, res) => {
 
             const nombreCortado = nombreArchivoOriginal.split('.');
             const extensionArchivo = nombreCortado[nombreCortado.length - 1].toLowerCase();
-            
+
             if (!extensionesValidas.includes(extensionArchivo)) {
                 console.log(`❌ ${nombreArchivoOriginal} tiene un formato no válido.`);
                 noEncontrados.push(`${nombreArchivoOriginal} (Formato no permitido)`);
@@ -294,7 +310,7 @@ const vincularImagenesMasivas = async (req, res) => {
             try {
                 // 🛠️ SOPORTE EXTREMO PARA TEMP FILES: Si express-fileupload guardó en disco temporal, leemos el path
                 let pathParaSubir = file.tempFilePath;
-                
+
                 // Si por alguna razón tempFilePath viene vacío, creamos un DataURI desde el buffer en memoria
                 if (!pathParaSubir && file.data) {
                     const base64Image = Buffer.from(file.data).toString('base64');

@@ -87,10 +87,7 @@ module.exports.io = io;
 app.use(express.json());
 
 // 🚀  Habilita el mapeo de archivos binarios hacia req.files
-app.use(fileUpload({
-    useTempFiles: true,
-    tempFileDir: '/tmp/'
-}));
+app.use(fileUpload());
 
 
 // 🚨 VARIABLE GLOBAL donde guardas tus instancias de whatsapp-web.js por restauranteId

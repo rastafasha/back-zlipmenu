@@ -8,6 +8,7 @@ const nodemailer = require('nodemailer');
 const smtpTransport = require('nodemailer-smtp-transport');
 
 
+
 const getUsuarios = async (req, res) => {
 
     const desde = Number(req.query.desde) || 0;
@@ -214,13 +215,14 @@ const getUsuariobyCedula = async (req, res) => {
     });
 
 };
+
 const crearUsuarios = async (req, res = response) => {
 
     const { email, password } = req.body;
 
     const body = req.body;
 
-     // 🔀 DESVÍO INTELIGENTE: Si no viene el correo, delegamos a la función Express
+    // 🔀 DESVÍO INTELIGENTE: Si no viene el correo, delegamos a la función Express
     if (!email || email.trim() === '') {
         console.log('📝 Cliente sin correo detectado. Derivando a crearClienteExpress...');
         return crearClienteExpress(req, res);
@@ -253,6 +255,20 @@ const crearUsuarios = async (req, res = response) => {
 
         //guardar usuario
         await usuario.save();
+        
+        // 🔗 VINCULAR USUARIO CON LA TIENDA SI VIENE EL CAMPO 'local'
+        if (body.local) {
+            // Opción A: Si el rol es el dueño/administrador, actualiza el dueño principal ('user')
+            if (body.role === 'TIENDA' || body.role === 'ADMIN') {
+                await Tienda.findByIdAndUpdate(body.local, { user: usuario._id });
+            }
+
+            // Opción B (Recomendada para múltiples roles): Agrega al usuario a una lista de empleados sin borrar al dueño
+            // Nota: Asegúrate de tener `usuarios: [{ type: Schema.Types.ObjectId, ref: 'Usuario' }]` en tu TiendaSchema
+            await Tienda.findByIdAndUpdate(body.local, {
+                $addToSet: { usuarios: usuario._id } // $addToSet evita duplicados automáticamente
+            });
+        }
 
         // Notificar al admin por email
         // try {
@@ -333,16 +349,16 @@ const crearClienteExpress = async (req, res = response) => {
             // 3. SI ES UN CLIENTE NUEVO: Autogeneramos credenciales en segundo plano
             esClienteNuevo = true;
             const salt = bcrypt.genSaltSync();
-            const passwordTemporal = Math.random().toString(36).slice(-8); 
+            const passwordTemporal = Math.random().toString(36).slice(-8);
             const passwordEncriptada = bcrypt.hashSync(passwordTemporal, salt);
 
             const datosUsuario = {
                 first_name,
                 telefono,
                 local,
-                role: 'USER', 
-                email: `express_${telefono}@zlipmenu.com`, 
-                password: passwordEncriptada 
+                role: 'USER',
+                email: `express_${telefono}@zlipmenu.com`,
+                password: passwordEncriptada
             };
 
             usuario = new Usuario(datosUsuario);
@@ -366,20 +382,20 @@ const crearClienteExpress = async (req, res = response) => {
 
         // 5. 🛑 BLOQUEO DE DUPLICADOS: Solo guardamos si hay coordenadas reales y NO son '0,0'
         if (lat && lng && lat !== '0' && lng !== '0') {
-            
+
             // 🧠 VALIDACIÓN EXTRA: Verificamos si este mismo usuario ya tiene exactamente esta latitud y longitud guardada
-            const direccionExistente = await Direccion.findOne({ 
-                user: usuario.id, 
-                latitud: String(lat), 
-                longitud: String(lng) 
+            const direccionExistente = await Direccion.findOne({
+                user: usuario.id,
+                latitud: String(lat),
+                longitud: String(lng)
             });
 
             if (!direccionExistente) {
                 const nuevaDireccion = new Direccion({
                     nombres_completos: nombres_completos || first_name,
                     direccion: direccion || 'Dirección Express',
-                    referencia: referencia || 'Sin referencia', 
-                    latitud: String(lat),  
+                    referencia: referencia || 'Sin referencia',
+                    latitud: String(lat),
                     longitud: String(lng),
                     user: usuario.id,
                 });
@@ -400,12 +416,12 @@ const crearClienteExpress = async (req, res = response) => {
         // 7. Respuesta unificada (Agregamos return por seguridad de memoria)
         return res.json({
             ok: true,
-            msg: esClienteNuevo 
-                ? 'Nuevo cliente express y dirección creados exitosamente.' 
+            msg: esClienteNuevo
+                ? 'Nuevo cliente express y dirección creados exitosamente.'
                 : 'Cliente existente identificado correctamente.',
             usuario,
             // Devolvemos el ID real (ya sea el nuevo creado o el que ya existía en el sistema)
-            direccionId: direccionGuardada ? direccionGuardada._id : null, 
+            direccionId: direccionGuardada ? direccionGuardada._id : null,
             token
         });
 
@@ -418,11 +434,6 @@ const crearClienteExpress = async (req, res = response) => {
         });
     }
 };
-
-
-
-
-
 
 
 const actualizarUAdmin = async (req, res = response) => {
@@ -549,6 +560,26 @@ const actualizarUsuario = async (req, res = response) => {
 
         const usuarioActualizado = await Usuario.findByIdAndUpdate(uid, data, { new: true });
 
+        // 🔗 ACTUALIZAR TIENDA SI SE ASIGNÓ O CAMBIÓ EL 'local'
+        if (data.local) {
+            // 1. Si el usuario es el dueño/admin, actualizamos quién es el dueño de la tienda
+            if (usuarioActualizado.role === 'TIENDA' || usuarioActualizado.role === 'ADMIN') {
+                await Tienda.findByIdAndUpdate(data.local, { user: usuarioActualizado._id });
+            }
+
+            // 2. Si el usuario cambió de tienda, lo sacamos de la tienda anterior (opcional pero recomendado)
+            if (usuarioDB.local && usuarioDB.local.toString() !== data.local.toString()) {
+                await Tienda.findByIdAndUpdate(usuarioDB.local, {
+                    $pull: { usuarios: usuarioActualizado._id }
+                });
+            }
+
+            // 3. Lo agregamos al equipo de la tienda actual
+            await Tienda.findByIdAndUpdate(data.local, {
+                $addToSet: { usuarios: usuarioActualizado._id }
+            });
+        }
+
         res.json({
             ok: true,
             usuario: usuarioActualizado
@@ -620,7 +651,7 @@ const actualizarStatusUsuario = async (req, res = response) => {
 
 
             const mailOptions = {
-                from: `"Soporte ZlipMenu | CRM" <${process.env.USER_EMAIL}>`, 
+                from: `"Soporte ZlipMenu | CRM" <${process.env.USER_EMAIL}>`,
                 to: usuarioActualizado.email,
                 subject: '¡Bienvenido! Tu rol ha sido actualizado',
                 html: `

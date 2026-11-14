@@ -7,23 +7,10 @@ const mongoose = require('mongoose');
 const cloudinary = require('cloudinary').v2;
 const { actualizarStockYPrecioEnML } = require('./productoMLController');
 
-// Internal function to reduce stock programmatically
-async function reducir_stock_internal(productoId, cantidad) {
-    try {
-        const producto = await Producto.findById(productoId);
-        if (producto) {
-            producto.stock = producto.stock - cantidad;
-            if (producto.stock < 0) producto.stock = 0;
-            await producto.save();
-            return producto;
-        } else {
-            throw new Error('Producto no encontrado');
-        }
-    } catch (error) {
-        console.error('Error reducing stock:', error);
-        throw error;
-    }
-}
+const Tienda = require('../models/tienda');
+const PushSubscription = require('../models/push-subscription');
+const { sendNotification } = require('../helpers/notificaciones');
+
 
 
 function listarAdmin(req, res) {
@@ -52,16 +39,39 @@ function listarAdmin(req, res) {
 
 
 const getProductos = async (req, res) => {
-
-    const productos = await Producto.find()
-        .sort({ createdAt: -1 })
-        .populate('titulo img categoria color selector');
-
-    res.json({
-        ok: true,
-        productos
-    });
+    try {
+        // Capturamos la página actual (por defecto 1) y el límite (por defecto 6)
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const limit = Math.max(1, Number(req.query.limit) || 6);
+        const skip = (page - 1) * limit;
+    
+        // Ejecutamos la búsqueda paginada y el conteo total en paralelo
+        const [productos, total] = await Promise.all([
+          Producto.find()
+            .sort({ createdAt: -1 }) // MongoDB ya los ordena por fecha descendente
+            .skip(skip)              // Salta los registros de páginas anteriores
+            .limit(limit)            // Trae únicamente los 6 de esta página
+            .populate('titulo img categoria color selector') // Trae solo el campo necesario
+            .lean(),                 // Convierte a JSON puro (hasta 3x más rápido)
+          Producto.countDocuments()
+        ]);
+    
+        return res.json({
+          ok: true,
+          productos,
+          total, // Total de registros en BD para que NgxPagination dibuje las páginas
+          page,
+          totalPages: Math.ceil(total / limit)
+        });
+    
+      } catch (error) {
+        console.error('Error en getProductos:', error);
+        return res.status(500).json({ ok: false, message: 'Error al obtener productos' });
+      }
 };
+
+
+
 
 const getProductosActivos = async (req, res) => {
 
@@ -169,38 +179,47 @@ const getProductoSlug = async (req, res) => {
 };
 
 const getProductosTiendaId = async (req, res) => {
-
     const id = req.params.id;
-    const uid = req.uid;
+    
+   // Capturamos la página actual (por defecto 1) y el límite (por defecto 6)
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.max(1, Number(req.query.limit) || 6);
+    const skip = (page - 1) * limit;
 
-    Producto.find({ local: id })
-        .populate('local', 'nombre slug categorias subcategoria')
-        .populate('categoria')
-        .populate('comentarios')
-        .sort({ createdAt: -1 })
-        .exec((err, productos) => {
-            if (err) {
-                return res.status(500).json({
-                    ok: false,
-                    mensaje: 'Error al buscar producto',
-                    errors: err
-                });
-            }
-            if (!productos) {
-                return res.status(400).json({
-                    ok: false,
-                    mensaje: 'El producto con el id ' + id + ' no existe',
-                    errors: { message: 'No existe un producto con ese id' }
-                });
+    try {
+        // 2. Ejecutamos la búsqueda paginada y el conteo total en paralelo para mayor velocidad
+        const [productos, total] = await Promise.all([
+            Producto.find({ local: id })
+                .populate('local', 'nombre slug categorias subcategoria')
+                .populate('categoria')
+                .populate('comentarios')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit),
+            Producto.countDocuments({ local: id })
+        ]);
 
-            }
-            res.status(200).json({
-                ok: true,
-                productos: productos
-            });
+
+        // 3. Devolvemos los 6 productos junto con la metadata de paginación para tu Angular
+        return res.status(200).json({
+            ok: true,
+            productos,
+            total, // Total de registros en BD para que NgxPagination dibuje las páginas
+            page,
+            totalPages: Math.ceil(total / limit)
+            
         });
 
+    } catch (err) {
+        console.error('Error en getProductosTiendaId:', err);
+        return res.status(500).json({
+            ok: false,
+            mensaje: 'Error al buscar productos',
+            errors: err.message
+        });
+    }
 };
+
 const getProductosTiendaIdActive = async (req, res) => {
     // Eliminamos cualquier espacio en blanco o salto de línea que venga del frontend
     const id = req.params.id.trim();
@@ -246,6 +265,43 @@ const getProductosTiendaIdActive = async (req, res) => {
         });
     }
 };
+
+
+const bypedido = async (req, res) => {
+    // 1. Extraemos el ID del local desde los parámetros
+    const { localId } = req.params; 
+
+    try {
+        // 2. Buscamos: Que pertenezca al local Y que 'bajopedido' sea true
+        const products = await Producto.find({ 
+            local: localId, 
+            bajoPedido: true 
+        }).lean(); // .lean() mejora el rendimiento devolviendo objetos JS puros
+
+        // 3. Si no hay productos o el arreglo está vacío
+        if (!products || products.length === 0) {
+            return res.status(404).json({ 
+                ok: false,
+                message: 'No se encontró ningún producto bajo pedido en este local.' 
+            });
+        }
+
+        // 4. Respuesta exitosa
+        return res.status(200).json({ 
+            ok: true,
+            products 
+        });
+
+    } catch (err) {
+        console.error('-> Error en bypedido:', err);
+        return res.status(500).json({ 
+            ok: false,
+            message: 'Ocurrió un error en el servidor al buscar los productos.' 
+        });
+    }
+};
+
+// CRUD
 
 const crearProducto = async (req, res) => {
     const uid = req.uid;
@@ -324,6 +380,7 @@ const crearProducto = async (req, res) => {
         });
     }
 };
+
 const actualizarProducto = async (req, res) => {
     const id = req.params.id;
     const uid = req.uid;
@@ -426,7 +483,6 @@ const actualizarProducto = async (req, res) => {
     }
 };
 
-
 const borrarProducto = async (req, res) => {
 
     const id = req.params.id;
@@ -456,6 +512,7 @@ const borrarProducto = async (req, res) => {
     }
 };
 
+// CRUD
 
 function find_by_slug(req, res) {
     var slug = req.params['slug'];
@@ -745,26 +802,144 @@ function papelera(req, res) {
     })
 }
 
-function reducir_stock(req, res) {
-    var id = req.params['id'];
-    var cantidad = req.params['cantidad'];
 
-    Producto.findById({ _id: id }, (err, producto) => {
+// STOCK
 
-        if (producto) {
-            Producto.findByIdAndUpdate({ _id: id }, { stock: parseInt(producto.stock) - parseInt(cantidad) }, (err, data) => {
-                if (data) {
-                    // 🚀 DISPARADOR EN SEGUNDO PLANO PARA MERCADO LIBRE
-                    actualizarStockYPrecioEnML(id);
-                    res.status(200).send({ data: data });
-                } else {
-                    // console.log(err);
-                    res.status(500).send({ message: 'No se encontró ningun dato en esta sección.' });
-                }
-            })
+async function reducir_stock(req, res) {
+    const id = req.params['id'];
+    const cantidad = parseInt(req.params['cantidad'], 10);
+
+    try {
+        const producto = await Producto.findById(id);
+        if (!producto) {
+            return res.status(404).send({ message: 'Producto no encontrado.' });
         }
-    })
+
+        const stockAnterior = parseInt(producto.stock, 10) || 0;
+        const nuevoStock = Math.max(0, stockAnterior - cantidad);
+        let nuevoStatus = producto.status;
+
+        if (stockAnterior > 0 && nuevoStock === 0) {
+            if (producto.bajoPedido) {
+                nuevoStatus = 'Activo'; // Se mantiene visible
+            } else {
+                nuevoStatus = 'Desactivado'; // Se oculta
+            }
+        }
+
+        const data = await Producto.findByIdAndUpdate(
+            id,
+            { stock: nuevoStock, status: nuevoStatus },
+            { new: true }
+        );
+
+        // Disparamos Push + Socket + Historial si llegó a 0
+        if (stockAnterior > 0 && nuevoStock === 0) {
+            await notificarStockCero(data);
+        }
+
+        // Disparador en segundo plano para Mercado Libre
+        actualizarStockYPrecioEnML(id);
+
+        return res.status(200).send({ data });
+
+    } catch (error) {
+        console.error('Error en reducir_stock:', error);
+        return res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
+    }
 }
+
+
+async function notificarStockCero(producto) {
+    try {
+        if (!producto.local) return;
+
+        // Buscamos la tienda para obtener el ID del dueño (tienda.user)
+        const tienda = await Tienda.findById(producto.local);
+        if (!tienda || !tienda.user) return;
+
+        const destinatarioId = tienda.user;
+        const nombreProducto = producto.titulo?.es || producto.titulo || 'Producto';
+
+        // Diferenciamos el mensaje según si el producto sigue visible o se ocultó
+        const titulo = producto.bajoPedido 
+            ? '⚠️ Producto Bajo Pedido sin stock' 
+            : '🛑 Producto Agotado y Oculto';
+
+        const mensaje = producto.bajoPedido
+            ? `El producto "${nombreProducto}" llegó a 0 unidades, pero sigue visible en tu tienda porque está configurado Bajo Pedido.`
+            : `El producto "${nombreProducto}" llegó a 0 unidades y se ha desactivado automáticamente.`;
+
+        // Ajusta esta ruta a la vista de edición o listado de productos en tu panel de Angular
+        const rutaDestino = `/dashboard/productos/editar/${producto._id}`; 
+        const tipoNotificacion = 'STOCK_CERO';
+
+        // --- ENVIAR NOTIFICACIÓN AL DUEÑO DE LA TIENDA EN TIEMPO REAL ---
+        const subs = await PushSubscription.find({ usuario: destinatarioId });
+
+        if (subs.length > 0) {
+            // Disparo masivo a dispositivos (Maneja Push + Socket + Historial automáticamente)
+            subs.forEach(s => {
+                sendNotification(
+                    s.subscription, 
+                    titulo, 
+                    mensaje, 
+                    rutaDestino, 
+                    destinatarioId, 
+                    tipoNotificacion, 
+                    producto._id
+                ).catch(err => { if (err.statusCode === 410) s.deleteOne(); });
+            });
+        } else {
+            // SALVAVIDAS IPHONE: Activa el WebSocket e inserta en el historial de Mongo
+            await sendNotification(
+                null, 
+                titulo, 
+                mensaje, 
+                rutaDestino, 
+                destinatarioId, 
+                tipoNotificacion, 
+                producto._id
+            );
+        }
+
+    } catch (error) {
+        console.error('⚠️ Error al enviar notificación de stock cero:', error.message);
+    }
+}
+
+// Internal function to reduce stock programmatically
+async function reducir_stock_internal(productoId, cantidad) {
+    try {
+        const producto = await Producto.findById(productoId);
+        if (!producto) {
+            throw new Error('Producto no encontrado');
+        }
+
+        const stockAnterior = Number(producto.stock) || 0;
+        producto.stock = Math.max(0, stockAnterior - Number(cantidad));
+
+        // Si el stock acaba de llegar a 0
+        if (stockAnterior > 0 && producto.stock === 0) {
+            if (producto.bajoPedido) {
+                producto.status = 'Activo'; // No se esconde
+            } else {
+                producto.status = 'Desactivado'; // Se esconde automáticamente
+            }
+
+            // Disparamos Push + Socket + Historial
+            await notificarStockCero(producto);
+        }
+
+        await producto.save();
+        return producto;
+
+    } catch (error) {
+        console.error('Error reducing stock:', error);
+        throw error;
+    }
+}
+
 
 function aumentar_stock(req, res) {
     var id = req.params['id'];
@@ -786,6 +961,11 @@ function aumentar_stock(req, res) {
         }
     })
 }
+
+// STOCK
+
+
+// VENTAS
 
 function aumentar_venta(req, res) {
     var id = req.params['id'];
@@ -1528,40 +1708,8 @@ function ecoomerce(req, res) {
 
 
 }
+// VENTAS
 
-const bypedido = async (req, res) => {
-    // 1. Extraemos el ID del local desde los parámetros
-    const { localId } = req.params; 
-
-    try {
-        // 2. Buscamos: Que pertenezca al local Y que 'bajopedido' sea true
-        const products = await Producto.find({ 
-            local: localId, 
-            bajoPedido: true 
-        }).lean(); // .lean() mejora el rendimiento devolviendo objetos JS puros
-
-        // 3. Si no hay productos o el arreglo está vacío
-        if (!products || products.length === 0) {
-            return res.status(404).json({ 
-                ok: false,
-                message: 'No se encontró ningún producto bajo pedido en este local.' 
-            });
-        }
-
-        // 4. Respuesta exitosa
-        return res.status(200).json({ 
-            ok: true,
-            products 
-        });
-
-    } catch (err) {
-        console.error('-> Error en bypedido:', err);
-        return res.status(500).json({ 
-            ok: false,
-            message: 'Ocurrió un error en el servidor al buscar los productos.' 
-        });
-    }
-};
 
 
 

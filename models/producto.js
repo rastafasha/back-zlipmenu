@@ -38,7 +38,7 @@ var ProductoSchema = Schema({
     nombre_selector: { type: String, required: false },
     comentarios: { type: Schema.ObjectId, ref: 'comentario'  },
     ventas: { type: Number },
-    isFeatured: { type: Boolean, required: false },
+    isFeatured: { type: Boolean, required: false, default: false  },
     status: { type: String, required: false, default: 'Desactivado' },
     bajoPedido: { type: Boolean, required: false, default: false },
     condition: {
