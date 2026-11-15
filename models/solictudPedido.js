@@ -6,6 +6,8 @@ var SolicitudPedidoSchema = Schema({
     tienda: { type: Schema.ObjectId, ref: 'tienda', required: true },
     pedidoList: { type: Array, require: true },
     user: { type: Schema.ObjectId, ref: 'user' },
+    fechaSolicitud: { type: Date, required: false },
+    horaSolicitud: { type: String, required: false },
     status: { type: String, required: false, default: 'PENDING' },
     createdAt: { type: Date, default: Date.now, required: true },
 }, { collection: 'solicitudPedido' });
