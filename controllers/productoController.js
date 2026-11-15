@@ -276,7 +276,11 @@ const bypedido = async (req, res) => {
         const products = await Producto.find({ 
             local: localId, 
             bajoPedido: true 
-        }).lean(); // .lean() mejora el rendimiento devolviendo objetos JS puros
+        })
+        .populate('local', 'nombre slug categorias subcategorias')
+            .populate('selector')
+            .populate('categoria')
+        .lean(); // .lean() mejora el rendimiento devolviendo objetos JS puros
 
         // 3. Si no hay productos o el arreglo está vacío
         if (!products || products.length === 0) {

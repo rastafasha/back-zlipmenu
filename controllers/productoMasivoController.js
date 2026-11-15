@@ -189,7 +189,7 @@ const importarProductosExcel = async (req, res) => {
                     }
                 }
 
-                // 🛠️ Procesamiento complementario de selectores
+                // 🛠️ Procesamiento complementario de selectores (Bilingüe ES / EN)
                 const selectorNombreEs = String(fila.nombre_selector || '').trim();
                 const variantesRaw = String(fila.variantes_selector || '').trim();
 
@@ -200,13 +200,34 @@ const importarProductosExcel = async (req, res) => {
                         .map(v => v.trim())
                         .filter(v => v !== '');
 
+                    // (Opcional) Si en tu Excel pones variantes_selector_en separadas por '|', también las soportamos
+                    const variantesEnRaw = String(fila.variantes_selector_en || '').trim();
+                    const listaVariantesEn = variantesEnRaw
+                        ? variantesEnRaw.split('|').map(v => v.trim())
+                        : [];
+
                     const selectoresIds = [];
 
-                    // 2. Creamos un documento Selector por cada variante (el backend/hook traduce 'en' automáticamente)
-                    for (const varianteEs of listaVariantes) {
+                    // 2. Creamos un documento Selector por cada variante con su traducción al inglés
+                    for (let i = 0; i < listaVariantes.length; i++) {
+                        const varianteEs = listaVariantes[i];
+                        let varianteEn = listaVariantesEn[i] || '';
+
+                        // Si no venía traducida en el Excel, la traducimos automáticamente
+                        if (!varianteEn) {
+                            try {
+                                const tradVariante = await translate(varianteEs, { from: 'es', to: 'en' });
+                                varianteEn = tradVariante.text;
+                            } catch (tErr) {
+                                console.log(`⚠️ No se pudo traducir variante "${varianteEs}". Usando español de respaldo.`);
+                                varianteEn = varianteEs;
+                            }
+                        }
+
                         const nuevoSelectorDoc = new Selector({
                             titulo: {
-                                es: varianteEs
+                                es: varianteEs,
+                                en: varianteEn
                             },
                             producto: productoGuardado._id
                         });
@@ -571,10 +592,66 @@ const importarCategoriasExcel = async (req, res) => {
 };
 
 
+const traducirSelectoresPendientes = async (req, res) => {
+    try {
+        // 1. Buscamos todos los selectores que NO tengan 'titulo.en' o esté vacío
+        const selectoresSinEn = await Selector.find({
+            $or: [
+                { 'titulo.en': { $exists: false } },
+                { 'titulo.en': null },
+                { 'titulo.en': '' }
+            ]
+        });
+
+        console.log(`🔍 Selectores encontrados sin traducción al inglés: ${selectoresSinEn.length}`);
+
+        let actualizados = 0;
+        const errores = [];
+
+        // 2. Recorremos cada uno y lo traducimos
+        for (const sel of selectoresSinEn) {
+            const textoEs = sel.titulo?.es;
+            if (!textoEs) continue;
+
+            try {
+                const trad = await translate(textoEs, { from: 'es', to: 'en' });
+                
+                sel.titulo.en = trad.text;
+                await sel.save();
+                
+                actualizados++;
+                console.log(`✅ Actualizado: "${textoEs}" -> "${trad.text}"`);
+            } catch (err) {
+                console.error(`❌ Error traduciendo "${textoEs}":`, err.message);
+                errores.push({ id: sel._id, texto: textoEs, error: err.message });
+            }
+        }
+
+        return res.json({
+            ok: true,
+            msg: 'Proceso de traducción de selectores finalizado.',
+            encontrados: selectoresSinEn.length,
+            actualizados,
+            errores
+        });
+
+    } catch (error) {
+        console.error('🔴 Error crítico traduciendo selectores:', error);
+        return res.status(500).json({
+            ok: false,
+            msg: 'Error en el servidor al traducir selectores',
+            error: error.message
+        });
+    }
+};
+
+
+
 module.exports = {
     importarProductosExcel,
     vincularImagenesMasivas,
     descargarPlantillaExcel,
-    importarCategoriasExcel
+    importarCategoriasExcel,
+    traducirSelectoresPendientes
 
 };

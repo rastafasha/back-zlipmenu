@@ -51,6 +51,7 @@ const {
      importarProductosExcel,
     vincularImagenesMasivas,
     descargarPlantillaExcel,
+    traducirSelectoresPendientes
 } = require('../controllers/productoMasivoController');
 
 const { validarJWT } = require('../middlewares/validar-jwt');
@@ -79,6 +80,9 @@ router.post('/vincular-imagen', [
     validarJWT,
     validarCampos
 ], vincularImagenesMasivas);
+
+// 📸 4. traduccion automatica de campos faltantes
+router.post('/traducir-selectores-pendientes', traducirSelectoresPendientes);
 
 
 // mercadolibre
