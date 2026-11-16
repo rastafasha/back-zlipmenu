@@ -2,14 +2,29 @@
 const PushSubscription = require('../models/push-subscription');
 const Usuario = require('../models/usuario');
 const { sendNotification } = require('../helpers/notificaciones');
-// Si necesitas guardar el historial en la base de datos de notificaciones (tu primer esquema), impórtalo:
 const Notificacion = require('../models/notificacion'); 
 
-// 1. Guardar Suscripción
+// 1. Guardar o Sincronizar Suscripción
 const guardarSuscripcion = async (req, res) => {
     try {
-        const subscription = req.body;
+        // Puedes enviar { subscription, silencioso: true } o el objeto subscription directo
+        const subscription = req.body.subscription || req.body;
+        const silencioso = req.body.silencioso || false;
         const uid = req.uid;
+
+        if (!subscription || !subscription.endpoint) {
+            return res.status(400).json({ ok: false, msg: 'Suscripción inválida' });
+        }
+
+        // 1. Si otro usuario tenía este mismo navegador/endpoint, se lo quitamos de su perfil
+        await Usuario.updateMany(
+            { 'pushSubscription.endpoint': subscription.endpoint, _id: { $ne: uid } },
+            { $unset: { pushSubscription: "" } }
+        );
+
+        // 2. Actualizamos o creamos el registro vinculándolo al usuario actual (uid)
+        const registroExistente = await PushSubscription.findOne({ 'subscription.endpoint': subscription.endpoint });
+        const esNuevoParaEsteUsuario = !registroExistente || registroExistente.usuario.toString() !== uid.toString();
 
         await PushSubscription.findOneAndUpdate(
             { 'subscription.endpoint': subscription.endpoint }, 
@@ -19,19 +34,42 @@ const guardarSuscripcion = async (req, res) => {
 
         await Usuario.findByIdAndUpdate(uid, { pushSubscription: subscription });
         
-        await sendNotification(
-            subscription, 
-            '¡Bienvenido!', 
-            'Ahora recibirás los avisos aquí.',
-            '/home'
-        );
+        // 3. Solo enviamos bienvenida si NO es silencioso y es nuevo para este usuario
+        if (!silencioso && esNuevoParaEsteUsuario) {
+            await sendNotification(
+                subscription, 
+                '¡Bienvenido!', 
+                'Ahora recibirás los avisos aquí.',
+                '/home'
+            );
+        }
         
-        res.status(201).json({ ok: true, msg: 'Suscripción guardada' });
+        res.status(201).json({ ok: true, msg: 'Suscripción guardada y vinculada' });
     } catch (error) {
+        console.error('Error en guardarSuscripcion:', error);
         res.status(500).json({ ok: false, msg: 'Error al guardar suscripción' });
     }
 };
 
+// 1.5 Eliminar Suscripción (Para llamar en el Logout de Angular)
+const eliminarSuscripcion = async (req, res) => {
+    try {
+        const { endpoint } = req.body;
+        const uid = req.uid;
+
+        if (endpoint) {
+            await PushSubscription.deleteOne({ 'subscription.endpoint': endpoint });
+        }
+        if (uid) {
+            await Usuario.findByIdAndUpdate(uid, { $unset: { pushSubscription: "" } });
+        }
+
+        res.json({ ok: true, msg: 'Dispositivo desvinculado correctamente' });
+    } catch (error) {
+        console.error('Error al eliminar suscripción:', error);
+        res.status(500).json({ ok: false, msg: 'Error al desvincular dispositivo' });
+    }
+};
 // 2. Envío Individual (Modificado para soportar Sockets e Historial)
 const enviarPushIndividual = async (req, res) => {
     try {
@@ -99,5 +137,6 @@ const enviarPushATodos = async (req, res) => {
 module.exports = {
     guardarSuscripcion,
     enviarPushIndividual,
-    enviarPushATodos
+    enviarPushATodos,
+    eliminarSuscripcion
 };
