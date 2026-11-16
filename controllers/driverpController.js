@@ -180,35 +180,30 @@ const listarDriverPorUsuario = async (req, res) => {
         });
     }
 };
-
-
 const listarDriverPorLocal = async (req, res) => {
     const local = req.params['local'];
 
     try {
-        //traemos el id dela tienda
         const tienda = await Tienda.findById(local);
-        // console.log(local);
-        //filtramos el id y lo comparamos con el user dentro de driver.user
-        const drivers = await Driver.find()
-        .populate('user')
-        // console.log(drivers);
         
         if (!tienda) {
             return res.status(400).json({
                 ok: false,
-                mensaje: `El tienda con el id ${local} no existe`,
-                errors: { message: 'No existe un tienda con ese ID' }
+                mensaje: `La tienda con el id ${local} no existe`,
+                errors: { message: 'No existe una tienda con ese ID' }
             });
         }
 
-       
+        // Ahora filtramos exactamente por el campo 'local' del modelo Driver
+        const drivers = await Driver.find({ local: local })
+            .populate('user');
 
         res.status(200).json({
             ok: true,
             tienda: tienda.nombre,
-            drivers: drivers || null
+            drivers: drivers // Devolverá [] si la tienda no tiene drivers asignados
         });
+
     } catch (error) {
         console.log(error);
         res.status(500).json({
@@ -218,6 +213,7 @@ const listarDriverPorLocal = async (req, res) => {
         });
     }
 };
+
 
 
 module.exports = {

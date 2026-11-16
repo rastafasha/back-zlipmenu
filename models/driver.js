@@ -12,7 +12,7 @@ const DriverProfileSchema = Schema({
     status: { type: String, required: false, default: 'PENDING' },
     user: { type: Schema.ObjectId, ref: 'user', require: true  },
     asignaciones: { type: String, require: false, ref: 'asignardelivery' },
-    // local: { type: Schema.ObjectId, ref: 'tienda', require: true  },
+    local: { type: Schema.ObjectId, ref: 'tienda', require: true  },
     // rutas: { type: String, require: true, default: 'USER' },
 });
 

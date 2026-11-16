@@ -181,8 +181,66 @@ async function actualizarStockYPrecioEnML(id_producto) {
 }
 
 
+// Listar productos publicados en Mercado Libre por Tienda
+async function listar_productos_ml_local (req, res) {
+    const id = req.params.id; // ID de la tienda (local)
+
+    try {
+        const productos = await Producto.find({
+            local: id,
+            'mercadolibre.id': { $ne: null }, // Que tengan un ID asignado de Mercado Libre
+            'mercadolibre.status': { $ne: 'not_synced' } // Y que estén sincronizados (ej. 'active', 'paused')
+        })
+        .populate('categoria')
+        .populate('local', 'nombre')
+        .sort({ 'mercadolibre.last_sync': -1 }); // Ordenados por última sincronización
+
+        res.status(200).json({
+            ok: true,
+            total: productos.length,
+            data: productos
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            ok: false,
+            message: 'Error al obtener los productos de Mercado Libre',
+            error
+        });
+    }
+};
+
+// Listar TODOS los productos en Mercado Libre (Para SUPERADMIN)
+async function listar_productos_ml_global (req, res){
+    try {
+        const productos = await Producto.find({
+            'mercadolibre.id': { $ne: null },
+            'mercadolibre.status': { $ne: 'not_synced' }
+        })
+        .populate('categoria')
+        .populate('local', 'nombre')
+        .sort({ 'mercadolibre.last_sync': -1 });
+
+        res.status(200).json({
+            ok: true,
+            total: productos.length,
+            data: productos
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            ok: false,
+            message: 'Error al obtener los productos globales de Mercado Libre',
+            error
+        });
+    }
+};
+
+
 module.exports = {
     exportarAMercadoLibre,
     actualizarStockYPrecioEnML,
+    listar_productos_ml_local,
+    listar_productos_ml_global
 
 };

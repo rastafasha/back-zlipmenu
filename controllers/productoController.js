@@ -2,6 +2,7 @@ const { response } = require('express');
 const Producto = require('../models/producto');
 const Marca = require('../models/marca');
 const Categoria = require('../models/categoria');
+const Comentario = require('../models/comentario');
 const translate = require('google-translate-api-x');
 const mongoose = require('mongoose');
 const cloudinary = require('cloudinary').v2;
@@ -604,14 +605,19 @@ function listar_best_sellers(req, res) {
     });
 }
 
-function listar_best_sellers_local(req, res) {
+const listar_best_sellers_local = async (req, res) => {
     const id = req.params.id;
-    Producto.find({ local: id }).sort({ ventas: -1 }).limit(8).exec((err, data) => {
-        if (data) {
-            res.status(200).send({ data: data });
-        }
-    });
-}
+
+    try {
+        const data = await Producto.find({ local: id, ventas: { $gt: 0 } })
+            .sort({ ventas: -1 })
+            .limit(8);
+
+        res.status(200).send({ data: data });
+    } catch (error) {
+        res.status(500).send({ message: 'Error al obtener los productos más vendidos', error });
+    }
+};
 
 function listar_populares(req, res) {
     Producto.find().sort({ stars: -1 }).limit(4).exec((err, data) => {
@@ -621,15 +627,64 @@ function listar_populares(req, res) {
     });
 }
 
-function listar_populares_local(req, res) {
+const listar_populares_local = async (req, res) => {
     const id = req.params.id;
-    Producto.find({ local: id }).sort({ stars: -1 }).limit(4).exec((err, data) => {
-        if (data) {
-            res.status(200).send({ data: data });
-        }
-    });
-}
 
+    try {
+        const populares = await Comentario.aggregate([
+            // 1. Filtramos comentarios de esta tienda que tengan estrellas > 0
+            { 
+                $match: { 
+                    local: new mongoose.Types.ObjectId(id),
+                    estrellas: { $gt: 0 }
+                } 
+            },
+            // 2. Agrupamos por producto y calculamos su promedio de estrellas
+            { 
+                $group: { 
+                    _id: "$producto", 
+                    promedioEstrellas: { $avg: "$estrellas" },
+                    totalResenas: { $sum: 1 }
+                } 
+            },
+            // 3. Ordenamos de mayor a menor calificación
+            { $sort: { promedioEstrellas: -1, totalResenas: -1 } },
+            // 4. Limitamos a los 4 mejores
+            { $limit: 4 },
+            // 5. Traemos toda la información del producto desde la colección 'productos'
+            {
+                $lookup: {
+                    from: "productos", // Nombre de la colección en plural en MongoDB
+                    localField: "_id",
+                    foreignField: "_id",
+                    as: "productoInfo"
+                }
+            },
+            // 6. Desempaquetamos el array de productoInfo
+            { $unwind: "$productoInfo" },
+            // 7. Devolvemos el producto limpio agregándole su promedio de estrellas
+            {
+                $replaceRoot: {
+                    newRoot: {
+                        $mergeObjects: [
+                            "$productoInfo",
+                            { 
+                                stars: "$promedioEstrellas", 
+                                totalResenas: "$totalResenas" 
+                            }
+                        ]
+                    }
+                }
+            }
+        ]);
+
+        res.status(200).send({ data: populares });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: 'Error al obtener los productos populares', error });
+    }
+};
 function listar_papelera(req, res) {
 
     var search = req.params['search'];

@@ -45,6 +45,8 @@ const {
 
 const {
      exportarAMercadoLibre,
+     listar_productos_ml_local,
+    listar_productos_ml_global
 } = require('../controllers/productoMLController');
 
 const {
@@ -87,12 +89,17 @@ router.post('/traducir-selectores-pendientes', traducirSelectoresPendientes);
 
 // mercadolibre
 
+
+
 router.post(
     '/exportar-mercadolibre/:id_producto', 
     validarJWT,            // 1. Verifica que el usuario del Admin esté logueado
     verificarYRenovarTokenML,  // 2. Busca, valida o refresca el token de ML de esa tienda en particular
     exportarAMercadoLibre // 3. Envía el JSON limpio y procesa la publicación
 );
+
+router.get('/productos_ml/global', listar_productos_ml_global);
+router.get('/productos_ml/local/:id', listar_productos_ml_local);
 
 // 
 
