@@ -9,7 +9,8 @@ const {
     actualizarPromocion, borrarPromocion, 
     getPromocion, listar_active,
     desactivar,
-    activar
+    activar,
+    getPromocionesByLocal
 
  } = require('../controllers/promocionController');
 const { validarJWT } = require('../middlewares/validar-jwt');
@@ -37,6 +38,7 @@ router.put('/:id', [
 router.delete('/:id', validarJWT, borrarPromocion);
 
 router.get('/:id', getPromocion);
+router.get('/local/:localId', validarJWT, getPromocionesByLocal);
 
 
 module.exports = router;

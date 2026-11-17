@@ -1,20 +1,23 @@
 const { Schema, model } = require('mongoose');
 
 const PromocionSchema = Schema({
-    producto_title: {
-        type: String,
-        require: true
-    },
-    first_title: { type: String, required: true },
-    etiqueta: { type: String, required: true },
-    subtitulo: { type: String, required: true },
+    producto_title: { type: String,require: true},
+    first_title: { type: String, required: false },
+    etiqueta: { type: String, required: false },
+    subtitulo: { type: String, required: false },
     colorfondo: { type: String, required: false },
-    end: { type: String, required: true },
+    end: { type: String, required: false },
     enlace: { type: String, required: false },
     estado: { type: Boolean, required: false },
     img: { type: String, required: false },
-    createdAt: { type: Date, default: Date.now, required: true },
-    updatedAt: { type: Date, default: Date.now, required: true }
+    local: { type: Schema.ObjectId, ref: 'tienda', default: null},
+    tipo: {
+        type: String,
+        enum: ['DESING', 'IMAGEN'],
+        default: 'DESING'
+    },
+    createdAt: { type: Date, default: Date.now, required: false },
+    updatedAt: { type: Date, default: Date.now, required: false }
 });
 
 PromocionSchema.method('toJSON', function() {
