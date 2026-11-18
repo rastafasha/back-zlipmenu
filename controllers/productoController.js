@@ -220,12 +220,9 @@ const getProductosTiendaId = async (req, res) => {
         });
     }
 };
-
 const getProductosTiendaIdActive = async (req, res) => {
-    // Eliminamos cualquier espacio en blanco o salto de línea que venga del frontend
     const id = req.params.id.trim();
 
-    // Validación de seguridad: Si el ID no tiene el formato correcto de MongoDB, se frena aquí
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({
             ok: false,
@@ -233,18 +230,33 @@ const getProductosTiendaIdActive = async (req, res) => {
         });
     }
 
-    try {
-        // Forzamos el casteo a un ObjectId real de MongoDB para la consulta
-        const productos = await Producto.find({
-            local: new mongoose.Types.ObjectId(id),
-            status: 'Activo'
-        })
-            .populate('local', 'nombre slug categorias subcategorias')
-            .populate('selector')
-            .populate('categoria')
-            .sort({ createdAt: -1 });
+    // Verificamos si la petición viene paginada (cas-products) o completa (cat-adicionales)
+    const tienePaginacion = req.query.page !== undefined || req.query.limit !== undefined;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = tienePaginacion ? Math.max(1, parseInt(req.query.limit) || 20) : 0;
+    const skip = tienePaginacion ? (page - 1) * limit : 0;
 
-        if (!productos || productos.length === 0) {
+    const query = {
+        local: new mongoose.Types.ObjectId(id),
+        status: 'Activo'
+    };
+
+    try {
+        // Ejecutamos en paralelo: productos paginados, conteo total y los IDs de categorías (solo en página 1)
+        const [productos, totalProductos, categoriasIds] = await Promise.all([
+            Producto.find(query)
+                .populate('local', 'nombre slug categorias subcategorias')
+                .populate('selector')
+                .populate('categoria')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+            Producto.countDocuments(query),
+            (tienePaginacion && page === 1) ? Producto.distinct('categoria', query) : Promise.resolve(null)
+        ]);
+
+        if (page === 1 && productos.length === 0) {
             return res.status(404).json({
                 ok: false,
                 mensaje: 'No se encontraron productos activos para esta tienda',
@@ -252,9 +264,26 @@ const getProductosTiendaIdActive = async (req, res) => {
             });
         }
 
+        // Si es la página 1, traemos los nombres y subcategorías de todas las categorías activas de la tienda
+        let categoriasDisponibles = [];
+        if (tienePaginacion && page === 1 && categoriasIds && categoriasIds.length > 0) {
+            categoriasDisponibles = await Categoria.find({ _id: { $in: categoriasIds } })
+                .select('nombre subcategorias icono slug')
+                .lean();
+        }
+
+        const hasMore = tienePaginacion ? (skip + productos.length) < totalProductos : false;
+
         return res.status(200).json({
             ok: true,
-            productos: productos
+            productos,
+            categoriasDisponibles: (tienePaginacion && page === 1) ? categoriasDisponibles : undefined,
+            paginacion: {
+                total: totalProductos,
+                paginaActual: page,
+                limite: limit,
+                hasMore
+            }
         });
 
     } catch (error) {
