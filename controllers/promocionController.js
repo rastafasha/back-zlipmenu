@@ -255,9 +255,6 @@ const getPromocionesByLocal = async (req, res) => {
     try {
         // 2. Buscar promociones de ese local (y opcionalmente ordenar de más reciente a más antigua)
         const promociones = await Promocion.find({ localId })
-            .populate('localId', 'nombre img')       // Ajusta los campos según tu modelo de Tienda
-            .populate('productos', 'titulo precio img') // Ajusta los campos según tu modelo de Producto
-            .populate('usuario', 'nombre img')
             .sort({ _id: -1 });
 
         res.json({
@@ -274,6 +271,30 @@ const getPromocionesByLocal = async (req, res) => {
     }
 };
 
+const listar_activeByLocal = async (req, res) => {
+    try {
+        const localId = req.params.localId;
+
+        // Ambos criterios van dentro del mismo objeto de filtro
+        const promocion_data = await Promocion.find({ 
+            estado: true, 
+            local: localId 
+        });
+
+        // Se verifica si el arreglo tiene elementos
+        if (promocion_data.length > 0) {
+            return res.status(200).send({ promociones: promocion_data });
+        } else {
+            return res.status(404).send({ message: 'No se encontró ningún dato en esta sección.' });
+        }
+
+    } catch (err) {
+        console.error(err);
+        return res.status(500).send({ message: 'Ocurrió un error en el servidor.' });
+    }
+};
+
+
 
 
 
@@ -286,5 +307,6 @@ module.exports = {
     listar_active,
     desactivar,
     activar,
-    getPromocionesByLocal
+    getPromocionesByLocal,
+    listar_activeByLocal
 };
