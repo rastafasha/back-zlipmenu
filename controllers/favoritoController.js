@@ -1,15 +1,32 @@
 const { response } = require('express');
 const Favorito = require('../models/favorites');
 
-const crearFavorito = async(req, res) => {
-
+const crearFavorito = async (req, res) => {
     const uid = req.uid;
-    const favorito = new Favorito({
-        usuario: uid,
-        ...req.body
-    });
+    const { producto, local } = req.body;
+
+    if (!local) {
+        return res.status(400).json({
+            ok: false,
+            msg: 'El ID del local es obligatorio'
+        });
+    }
 
     try {
+        // Evita duplicados del mismo producto en el mismo local para ese usuario
+        const existeFavorito = await Favorito.findOne({ usuario: uid, producto, local });
+        if (existeFavorito) {
+            return res.status(200).json({
+                ok: true,
+                favorito: existeFavorito,
+                msg: 'El producto ya estaba en favoritos'
+            });
+        }
+
+        const favorito = new Favorito({
+            usuario: uid,
+            ...req.body
+        });
 
         const favoritoDB = await favorito.save();
 
@@ -25,47 +42,9 @@ const crearFavorito = async(req, res) => {
             msg: 'Hable con el admin'
         });
     }
-
-
 };
 
-const actualizarFavorito = async(req, res) => {
 
-    const id = req.params.id;
-    const uid = req.uid;
-
-    try {
-
-        const favorito = await Favorito.findById(id);
-        if (!favorito) {
-            return res.status(500).json({
-                ok: false,
-                msg: 'favorito no encontrado por el id'
-            });
-        }
-
-        const cambiosFavorito = {
-            ...req.body,
-            usuario: uid
-        }
-
-        const favoritoActualizado = await Profile.findByIdAndUpdate(id, cambiosFavorito, { new: true });
-
-        res.json({
-            ok: true,
-            favoritoActualizado
-        });
-
-    } catch (error) {
-        console.log(error);
-        res.status(500).json({
-            ok: false,
-            msg: 'Error hable con el admin'
-        });
-    }
-
-
-};
 
 const getFavoritos = async(req, res) => {
 
@@ -111,18 +90,15 @@ const getFavorito = async(req, res) => {
 
 };
 
-
-const borrarFavorito = async(req, res) => {
-
+const borrarFavorito = async (req, res) => {
     const id = req.params.id;
 
     try {
-
         const favorito = await Favorito.findById(id);
         if (!favorito) {
-            return res.status(500).json({
+            return res.status(404).json({
                 ok: false,
-                msg: 'favorito no encontrado por el id'
+                msg: 'Favorito no encontrado por el id'
             });
         }
 
@@ -130,38 +106,43 @@ const borrarFavorito = async(req, res) => {
 
         res.json({
             ok: true,
-            msg: 'favorito eliminado'
+            msg: 'Favorito eliminado'
         });
 
     } catch (error) {
+        console.log(error);
         res.status(500).json({
             ok: false,
-            msg: 'Error hable con el admin'
+            msg: 'Error, hable con el admin'
         });
     }
 };
 
-const listarFavoritoPorUsuario = (req, res) => {
-    var id = req.params['id'];
-    Favorito.find({ usuario: id }, (err, data_favorito) => {
-        if (!err) {
-            if (data_favorito) {
-                res.status(200).send({ favoritos: data_favorito });
-            } else {
-                res.status(500).send({ error: err });
-            }
-        } else {
-            res.status(500).send({ error: err });
-        }
-    }).populate('producto')
-    .sort({createdAt: - 1});
-}
 
+const listarFavoritoPorUsuario = async (req, res) => {
+    try {
+        const { id, localId } = req.params; // O req.query.localId si lo pasas por query
+
+        const filtro = { usuario: id };
+        if (localId) {
+            filtro.local = localId;
+        }
+
+        const data_favorito = await Favorito.find(filtro)
+            .populate('producto')
+            .sort({ createdAt: -1 })
+            .lean();
+
+        res.status(200).send({ favoritos: data_favorito });
+    } catch (err) {
+        console.log(err);
+        res.status(500).send({ error: err });
+    }
+};
 
 
 module.exports = {
     crearFavorito,
-    actualizarFavorito,
     getFavoritos,
     getFavorito,
     borrarFavorito,

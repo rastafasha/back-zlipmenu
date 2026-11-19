@@ -7,7 +7,6 @@
  const {
  
     crearFavorito,
-    actualizarFavorito,
     getFavoritos,
     getFavorito,
     borrarFavorito,
@@ -26,10 +25,6 @@
      validarCampos
  ], crearFavorito);
  
- router.put('/update/:id', [
-     validarJWT,
-     validarCampos
- ], actualizarFavorito);
  
  router.delete('/remove/:id', validarJWT, borrarFavorito);
  
