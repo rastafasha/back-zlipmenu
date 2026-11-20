@@ -91,18 +91,17 @@ const getFavorito = async(req, res) => {
 };
 
 const borrarFavorito = async (req, res) => {
-    const id = req.params.id;
+    const id = req.query.id; // <-- Cambio de params a query
 
     try {
-        const favorito = await Favorito.findById(id);
+        const favorito = await Favorito.findByIdAndDelete(id); // Busca y elimina en un solo paso
+        
         if (!favorito) {
             return res.status(404).json({
                 ok: false,
                 msg: 'Favorito no encontrado por el id'
             });
         }
-
-        await Favorito.findByIdAndDelete(id);
 
         res.json({
             ok: true,
@@ -119,13 +118,15 @@ const borrarFavorito = async (req, res) => {
 };
 
 
+
 const listarFavoritoPorUsuario = async (req, res) => {
     try {
-        const { id, localId } = req.params; // O req.query.localId si lo pasas por query
+        const { id } = req.params;
+        const { local } = req.body; // Extraemos 'local' desde el body
 
         const filtro = { usuario: id };
-        if (localId) {
-            filtro.local = localId;
+        if (local) {
+            filtro.local = local;
         }
 
         const data_favorito = await Favorito.find(filtro)
@@ -139,6 +140,7 @@ const listarFavoritoPorUsuario = async (req, res) => {
         res.status(500).send({ error: err });
     }
 };
+
 
 
 module.exports = {
