@@ -1,5 +1,7 @@
 const { response } = require('express');
 const Favorito = require('../models/favorites');
+const Tienda = require('../models/tienda');
+
 
 const crearFavorito = async (req, res) => {
     const uid = req.uid;
@@ -129,12 +131,17 @@ const listarFavoritoPorUsuario = async (req, res) => {
             filtro.local = local;
         }
 
+        const tienda = await Tienda.findById(local);
+
         const data_favorito = await Favorito.find(filtro)
             .populate('producto')
             .sort({ createdAt: -1 })
             .lean();
 
-        res.status(200).send({ favoritos: data_favorito });
+        res.status(200).send({ 
+            favoritos: data_favorito,
+            tienda: tienda.nombre,
+         });
     } catch (err) {
         console.log(err);
         res.status(500).send({ error: err });
