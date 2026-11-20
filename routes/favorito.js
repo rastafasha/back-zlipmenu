@@ -18,7 +18,7 @@
  
  router.get('/', getFavoritos);
  router.get('/:id', getFavorito);
- router.get('/user/:id', listarFavoritoPorUsuario);
+ router.get('/user/:id/:localId?', listarFavoritoPorUsuario);
  
  router.post('/registro', [
      validarJWT,

@@ -123,25 +123,23 @@ const borrarFavorito = async (req, res) => {
 
 const listarFavoritoPorUsuario = async (req, res) => {
     try {
-        const { id } = req.params;
+        const { id, localId } = req.params;
         const { local } = req.body; // Extraemos 'local' desde el body
 
         const filtro = { usuario: id };
-        if (local) {
-            filtro.local = local;
+       if (localId && localId !== 'undefined' && localId !== 'null') {
+            filtro.local = localId;
         }
 
-        const tienda = await Tienda.findById(local);
+        const tienda = await Tienda.findById(localId);
 
         const data_favorito = await Favorito.find(filtro)
             .populate('producto')
+            .populate('local')
             .sort({ createdAt: -1 })
             .lean();
 
-        res.status(200).send({ 
-            favoritos: data_favorito,
-            tienda: tienda.nombre,
-         });
+        res.status(200).send({ favoritos: data_favorito });
     } catch (err) {
         console.log(err);
         res.status(500).send({ error: err });
