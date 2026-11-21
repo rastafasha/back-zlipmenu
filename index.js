@@ -148,8 +148,10 @@ const startServer = async () => {
     app.use('/api/pagoefectivo', require('./routes/pago.efectivo'));
     app.use('/api/pagocheque', require('./routes/pagocheque'));
     app.use('/api/paypal', require('./routes/paypal'));
+
     app.use('/api/tasadollarbcv', require('./routes/tasadollarbcv'));
     app.use('/api/tasaeurobcv', require('./routes/tasaeurobcv'));
+    app.use('/api/tasas', require('./routes/tasas'));
 
     app.use('/api/paises', require('./routes/pais'));
     //delivery
