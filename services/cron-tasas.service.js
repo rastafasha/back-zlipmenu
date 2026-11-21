@@ -2,16 +2,10 @@ const axios = require('axios');
 const cron = require('node-cron');
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
-
-// Definición exacta de tus modelos
-const Tasadollarbcv = mongoose.model('tasadollarbcv', Schema({
-    precio_dia: { type: Number, required: true, default: 0 }
-}, { collection: 'tasadollarbcv', timestamps: true }));
-
-const Tasaeurobcv = mongoose.model('tasaeurobcv', Schema({
-    precio_dia: { type: Number, required: true, default: 0 }
-}, { collection: 'tasaeurobcv', timestamps: true }));
-
+const Tasadollarbcv = require('../models/tasadollarbcv');
+const Tasaeurobcv = require('../models/tasaeurobcv'); 
+const https = require('https');
+const cheerio = require('cheerio');
 /**
  * Función que extrae la data oficial del BCV y actualiza MongoDB Atlas
  */
