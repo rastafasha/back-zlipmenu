@@ -72,8 +72,8 @@ async function sincronizarTasasOficiales() {
         const $ = cheerio.load(response.data);
 
         // Buscamos los contenedores específicos del BCV para USD y EUR
-        const usdTexto = $('#dolar strong').text().trim().replace(',', '.');
-        const eurTexto = $('#euro strong').text().trim().replace(',', '.');
+        const usdTexto = $('#dolar strong').text().trim().replace(/\./g, '').replace(',', '.');
+        const eurTexto = $('#euro strong').text().trim().replace(/\./g, '').replace(',', '.');
 
         if (!usdTexto || !eurTexto) {
             throw new Error('No se pudieron encontrar los contenedores de tasas en el HTML del BCV.');
@@ -100,12 +100,12 @@ async function sincronizarTasasOficiales() {
 /**
  * TAREA PROGRAMADA: De Lunes a Viernes a las 5:00 PM (Hora de Venezuela)
  */
-cron.schedule('0 17 * * 1-5', async () => {
-    console.log('⏰ Ejecutando actualización cambiaria automática de la tarde...');
-    await sincronizarTasasOficiales();
-}, {
-    scheduled: true,
-    timezone: "America/Caracas"
-});
+// cron.schedule('0 17 * * 1-5', async () => {
+//     console.log('⏰ Ejecutando actualización cambiaria automática de la tarde...');
+//     await sincronizarTasasOficiales();
+// }, {
+//     scheduled: true,
+//     timezone: "America/Caracas"
+// });
 
 module.exports = { sincronizarTasasOficiales };
