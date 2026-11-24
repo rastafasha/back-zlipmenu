@@ -68,6 +68,8 @@ var TiendaSchema = Schema({
     capacidad_por_hora:{type: Number, required: false },
     isFeatured: { type: Boolean, required: false, default: false },
     mostrarTasas: { type: Boolean, required: false,default: false },
+    euroTasa: { type: Boolean, required: false,default: false },
+    tasaPersonalizada: { type: Boolean, required: false, default: false },
     usaDelivery: { type: Boolean, required: false,default: false },
     usaPedido: { type: Boolean, required: false,default: false },
     usaPromocion: { type: Boolean, required: false,default: false },

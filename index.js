@@ -152,6 +152,7 @@ const startServer = async () => {
     app.use('/api/tasadollarbcv', require('./routes/tasadollarbcv'));
     app.use('/api/tasaeurobcv', require('./routes/tasaeurobcv'));
     app.use('/api/tasas', require('./routes/tasas'));
+    app.use('/api/tasapersonalizada', require('./routes/tasapersonalizada'));
 
     app.use('/api/paises', require('./routes/pais'));
     //delivery

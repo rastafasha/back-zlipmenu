@@ -8,6 +8,7 @@ var SolicitudPedidoSchema = Schema({
     user: { type: Schema.ObjectId, ref: 'user' },
     fechaSolicitud: { type: Date, required: false },
     horaSolicitud: { type: String, required: false },
+    observaciones: { type: String, required: false },
     status: { type: String, required: false, default: 'PENDING' },
     createdAt: { type: Date, default: Date.now, required: true },
 }, { collection: 'solicitudPedido' });
