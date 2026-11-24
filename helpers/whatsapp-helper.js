@@ -14,56 +14,82 @@ const crearClienteWhatsApp = (restauranteId) => {
 
     const client = new Client({
         authStrategy: new LocalAuth({
-            clientId: restauranteId, 
+            clientId: restauranteId,
             dataPath: './whatsapp-sessions'
         }),
+        webVersionCache: {
+            type: 'none' // Evita cachés HTML corruptas o desactualizadas en Render
+        },
         puppeteer: {
-        // En Render NO ponemos executablePath, dejamos que busque el Chrome del sistema operativo [1]
-        args: [
-            '--no-sandbox', 
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage', // Evita problemas de memoria compartida en Render
-            '--disable-gpu',
-            '--no-first-run',
-            '--no-zygote',
-            '--single-process' // Reduce drásticamente el uso de RAM
-        ],
-    }
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage', // Vital en Render para evitar fallos de memoria compartida
+                '--disable-gpu',
+                '--no-first-run',
+                '--disable-extensions'
+            ]
+        }
     });
 
-    client.on('qr', async (qr) => {
-        console.log(`✨ QR generado para el local: ${restauranteId}`);
+    clientesActivos[restauranteId] = client;
 
-        // Corregido: Usa Tienda
-        await Tienda.findByIdAndUpdate(restauranteId, {
-            whatsappStatus: 'ESPERANDO_QR',
-            whatsappQR: qr 
-        });
+    client.on('qr', async (qr) => {
+        try {
+            console.log(`✨ QR generado para el local: ${restauranteId}`);
+            await Tienda.findByIdAndUpdate(restauranteId, {
+                whatsappStatus: 'ESPERANDO_QR',
+                whatsappQR: qr
+            });
+        } catch (error) {
+            console.error(`Error guardando QR para ${restauranteId}:`, error);
+        }
     });
 
     client.on('ready', async () => {
-        console.log(`🚀 ¡WhatsApp conectado para el local: ${restauranteId}!`);
+        try {
+            console.log(`🚀 ¡WhatsApp conectado para el local: ${restauranteId}!`);
+            await Tienda.findByIdAndUpdate(restauranteId, {
+                whatsappStatus: 'CONECTADO',
+                whatsappQR: '',
+                whatsappConnectedAt: new Date()
+            });
+        } catch (error) {
+            console.error(`Error actualizando estado READY para ${restauranteId}:`, error);
+        }
+    });
 
-        // Corregido: Usa Tienda
+    client.on('disconnected', async (reason) => {
+        console.warn(`⚠️ WhatsApp desconectado para ${restauranteId}: ${reason}`);
+        delete clientesActivos[restauranteId];
         await Tienda.findByIdAndUpdate(restauranteId, {
-            whatsappStatus: 'CONECTADO',
-            whatsappQR: '', 
-            whatsappConnectedAt: new Date()
-        });
+            whatsappStatus: 'DESCONECTADO',
+            whatsappQR: ''
+        }).catch(() => {});
     });
 
-    // 🚨 LA NUEVA INYECCIÓN: Escucha todos los mensajes recibidos por la cuenta
     client.on('message', async (message) => {
-        // Ejecutamos de forma asíncrona aislada para no congelar los hilos de Puppeteer
-        procesarMensajeBot(restauranteId, message, client);
+        try {
+            await procesarMensajeBot(restauranteId, message, client);
+        } catch (error) {
+            console.error(`Error procesando mensaje en ${restauranteId}:`, error);
+        }
     });
 
+    // Captura el error de inyección (Socket null) para que NO tumbe el servidor
+    client.initialize().catch(async (err) => {
+        console.error(`❌ Error al inicializar WhatsApp para ${restauranteId}:`, err.message);
+        delete clientesActivos[restauranteId]; // Limpia el cliente roto para permitir reintentos
+        await Tienda.findByIdAndUpdate(restauranteId, {
+            whatsappStatus: 'ERROR',
+            whatsappQR: ''
+        }).catch(() => {});
+    });
 
-    client.initialize();
-
-    clientesActivos[restauranteId] = client;
     return client;
 };
+
 
 const enviarMensajeWhatsApp = async (restauranteId, telefono, mensaje) => {
     try {
